@@ -2,13 +2,45 @@
 Stromify KPI Monitor - Dashboard
 Streamlit-Frontend zur Visualisierung der Unternehmens-KPIs.
 """
+import threading
+import logging
 import streamlit as st
 import pandas as pd
+import schedule
+import time
 from datetime import datetime, timedelta
 
 import config
 from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, is_using_dummy_data
 import charts
+
+logger = logging.getLogger(__name__)
+
+
+def _run_cronjob():
+    """Führt den KPI-Fetch im Hintergrund aus."""
+    try:
+        from cronjob.main import run_fetch
+        run_fetch()
+        logger.info("✅ Hintergrund-Cronjob abgeschlossen")
+    except Exception as e:
+        logger.error(f"❌ Hintergrund-Cronjob Fehler: {e}")
+
+
+def _scheduler_loop():
+    """Läuft dauerhaft im Background-Thread und führt den Schedule aus."""
+    schedule.every().day.at("21:00").do(_run_cronjob)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+# Scheduler einmalig starten (nicht bei jedem Streamlit-Rerun)
+if "scheduler_started" not in st.session_state:
+    st.session_state["scheduler_started"] = True
+    t = threading.Thread(target=_scheduler_loop, daemon=True)
+    t.start()
+    logger.info("🕐 Hintergrund-Scheduler gestartet (täglich 21:00)")
 
 # --- Page Config ---
 st.set_page_config(
