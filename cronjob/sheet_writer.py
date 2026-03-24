@@ -98,9 +98,7 @@ def write_daily_row(data: dict):
         data.get("ga_bounce_rate", 0.0),
         data.get("notion_customers_total", 0),
         data.get("notion_yearly_consumption_gwh", 0.0),
-        data.get("zoho_deals_new", 0),
         data.get("zoho_deals_total", 0),
-        data.get("zoho_deals_won", 0),
         data.get("li_impressions", 0),
         data.get("li_views", 0),
     ]
@@ -119,19 +117,98 @@ def write_daily_row(data: dict):
         logger.info(f"Neuer Tageseintrag für {today_str} hinzugefügt")
 
 
+def backfill_ga_rows(ga_history: dict):
+    """
+    Schreibt historische GA4-Tageswerte ins Sheet – überspringt bereits vorhandene Daten.
+
+    Args:
+        ga_history: {date_str: {ga_visitors, ga_sessions, ga_bounce_rate}}
+    """
+    client = _get_client()
+    sheet = client.open_by_key(config.GOOGLE_SHEETS_ID)
+    worksheet = sheet.worksheet(config.SHEET_DAILY)
+
+    _ensure_headers(worksheet, config.DAILY_COLUMNS)
+
+    existing_dates = set(worksheet.col_values(1)[1:])  # Zeile 1 = Header überspringen
+
+    new_rows = []
+    skipped = 0
+    for date_str in sorted(ga_history.keys()):
+        if date_str in existing_dates:
+            skipped += 1
+            continue
+        d = ga_history[date_str]
+        row = [
+            date_str,
+            d.get("ga_visitors", 0),
+            d.get("ga_sessions", 0),
+            d.get("ga_bounce_rate", 0.0),
+            0,    # notion_customers_total – unbekannt für historische Tage
+            0.0,  # notion_yearly_consumption_gwh
+            0,    # zoho_deals_total
+            0,    # li_impressions
+            0,    # li_views
+        ]
+        new_rows.append([str(v) for v in row])
+
+    if new_rows:
+        worksheet.append_rows(new_rows, value_input_option="RAW")
+        logger.info(f"Backfill: {len(new_rows)} historische GA4-Zeilen geschrieben, {skipped} übersprungen")
+    else:
+        logger.info(f"Backfill: Alle {skipped} Tage bereits vorhanden")
+
+
+def write_active_leads(leads: list):
+    """
+    Schreibt ALLE Deals in das Sheet 'zoho_leads' mit Status-Attribut.
+    Status: new | active | won | lost | waiting
+    Überschreibt immer den kompletten Inhalt.
+    """
+    client = _get_client()
+    sheet = client.open_by_key(config.GOOGLE_SHEETS_ID)
+
+    try:
+        worksheet = sheet.worksheet("zoho_leads")
+    except Exception:
+        worksheet = sheet.add_worksheet(title="zoho_leads", rows=500, cols=8)
+
+    headers = ["name", "company", "stage", "status", "amount", "created_date", "closing_date"]
+    rows = [headers]
+    for lead in leads:
+        rows.append([
+            lead.get("name", ""),
+            lead.get("company", ""),
+            lead.get("stage", ""),
+            lead.get("status", ""),
+            str(lead.get("amount", "") or ""),
+            lead.get("created_date", ""),
+            lead.get("closing_date", ""),
+        ])
+
+    worksheet.clear()
+    worksheet.update("A1", rows, value_input_option="RAW")
+    logger.info(f"zoho_leads Sheet aktualisiert: {len(leads)} Deals total")
+
+
 def _calc_customers_new(df, current_month: str) -> int:
     """
     Berechnet Neukunden im Monat.
     Vergleicht letzten Wert des aktuellen Monats mit dem letzten Wert des Vormonats.
     Falls kein Vormonat existiert (erster Monat), wird der aktuelle Endwert genommen.
+    Nur Zeilen mit Kunden > 0 werden berücksichtigt (Backfill-Zeilen haben 0).
     """
-    month_df = df[df["month"] == current_month]
-    current_end = int(month_df["notion_customers_total"].iloc[-1])
+    # Nur Zeilen mit echten Kundendaten (Backfill-Zeilen haben 0)
+    df_real = df[df["notion_customers_total"] > 0]
+
+    month_real = df_real[df_real["month"] == current_month]
+    if month_real.empty:
+        return 0
+    current_end = int(month_real["notion_customers_total"].iloc[-1])
 
     # Vormonat finden
-    prev_months = df[df["month"] < current_month]
+    prev_months = df_real[df_real["month"] < current_month]
     if prev_months.empty:
-        # Erster Monat → alle Kunden sind "neu"
         return current_end
 
     prev_end = int(prev_months["notion_customers_total"].iloc[-1])
@@ -160,6 +237,10 @@ def update_monthly_aggregation():
     df["date"] = pd.to_datetime(df["date"])
     df["month"] = df["date"].dt.to_period("M").astype(str)
 
+    # Nach Datum sortieren – wichtig damit iloc[-1] immer den neuesten Eintrag liefert
+    # (Backfill-Zeilen werden ans Ende angehängt, sind aber zeitlich frühere Tage)
+    df = df.sort_values("date").reset_index(drop=True)
+
     # Numerische Spalten sauber konvertieren
     # Deutsche Locale: 1.234,56 → 1234.56 / RAW-Modus: 5.13 bleibt 5.13
     numeric_cols = [c for c in df.columns if c not in ("date", "month")]
@@ -174,15 +255,24 @@ def update_monthly_aggregation():
         logger.warning(f"Keine Daten für Monat {current_month}")
         return
 
+    # Für Snapshot-Werte (customers, gwh) nur Zeilen mit echten Daten nutzen
+    # (Backfill-Zeilen haben 0 für Notion-Felder)
+    month_real = month_df[month_df["notion_customers_total"] > 0]
+    customers_end = int(month_real["notion_customers_total"].iloc[-1]) if not month_real.empty else 0
+    gwh_end = round(float(month_real["notion_yearly_consumption_gwh"].iloc[-1]), 2) if not month_real.empty else 0.0
+
+    # Zoho-Snapshot: letzter bekannter Gesamtwert des Monats
+    zoho_df = month_df[month_df["zoho_deals_total"] > 0]
+    zoho_total_end = int(zoho_df["zoho_deals_total"].iloc[-1]) if not zoho_df.empty else 0
+
     monthly_row = [
         current_month,
         int(month_df["ga_visitors"].sum()),
         int(month_df["ga_visitors"].mean()),
-        int(month_df["notion_customers_total"].iloc[-1]),
+        customers_end,
         int(_calc_customers_new(df, current_month)),
-        round(float(month_df["notion_yearly_consumption_gwh"].iloc[-1]), 2),
-        int(month_df["zoho_deals_new"].sum()),
-        int(month_df["zoho_deals_won"].sum()),
+        gwh_end,
+        zoho_total_end,
         int(month_df["li_impressions"].sum()),
         int(month_df["li_views"].sum()),
     ]

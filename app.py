@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 
 import config
-from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, is_using_dummy_data
+from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, load_active_leads, is_using_dummy_data
 import charts
 
 logger = logging.getLogger(__name__)
@@ -193,41 +193,68 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
         st.warning("Keine Daten verfügbar.")
         return
 
+    # Zeitraum-gefilterte Daten für Summen-KPIs
+    period_df = df.tail(days)
+    # Vorperiode für Delta-Berechnung
+    prev_df = df.iloc[-2 * days:-days] if len(df) >= 2 * days else pd.DataFrame()
+
+    # Snapshot-KPIs: letzter bekannter Wert (nur Zeilen mit echten Daten)
     latest = df.iloc[-1]
+    customers_df = df[df["notion_customers_total"] > 0]
+    customers_val = int(customers_df["notion_customers_total"].iloc[-1]) if not customers_df.empty else 0
+    gwh_df = df[df["notion_yearly_consumption_gwh"] > 0]
+    gwh_val = gwh_df["notion_yearly_consumption_gwh"].iloc[-1] if not gwh_df.empty else 0.0
+
+    # Kumulative KPIs: Summe über Zeitraum
+    ga_val = int(period_df["ga_visitors"].sum())
+    li_val = int(period_df["li_impressions"].sum())
+
+    # Deltas
+    ga_prev = int(prev_df["ga_visitors"].sum()) if not prev_df.empty else 0
+    ga_delta = f"{((ga_val - ga_prev) / ga_prev * 100):+.1f}%" if ga_prev > 0 else None
+
+    li_prev = int(prev_df["li_impressions"].sum()) if not prev_df.empty else 0
+    li_delta = f"{((li_val - li_prev) / li_prev * 100):+.1f}%" if li_prev > 0 else None
+
+    customers_prev_df = df[df["notion_customers_total"] > 0].iloc[:-1] if len(customers_df) > 1 else pd.DataFrame()
+    customers_prev = int(customers_prev_df["notion_customers_total"].iloc[-1]) if not customers_prev_df.empty else 0
+    customers_delta = f"{customers_val - customers_prev:+.0f}" if customers_prev > 0 else None
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        delta_abs, delta_pct = calculate_delta(df, "ga_visitors", days)
         st.metric(
-            label="🌐 Website Besucher",
-            value=f"{int(latest['ga_visitors']):,}",
-            delta=f"{delta_pct:+.1f}%",
+            label=f"🌐 Website Besucher ({days}d)",
+            value=f"{ga_val:,}",
+            delta=ga_delta,
         )
 
     with col2:
-        delta_abs, delta_pct = calculate_delta(df, "notion_customers_total", days)
         st.metric(
             label="👥 Kunden Gesamt",
-            value=f"{int(latest['notion_customers_total']):,}",
-            delta=f"{delta_abs:+.0f}",
+            value=f"{customers_val:,}",
+            delta=customers_delta,
         )
 
     with col3:
-        delta_abs, delta_pct = calculate_delta(df, "li_impressions", days)
+        leads_df = load_active_leads()
+        if not leads_df.empty and "status" in leads_df.columns:
+            active_leads_val = int(leads_df["status"].isin(["new", "active"]).sum())
+            new_leads_val = int((leads_df["status"] == "new").sum())
+            active_delta = f"davon {new_leads_val} neu" if new_leads_val > 0 else None
+        else:
+            active_leads_val = 0
+            active_delta = None
         st.metric(
-            label="👁️ LinkedIn Impressions",
-            value=f"{int(latest['li_impressions']):,}",
-            delta=f"{delta_pct:+.1f}%",
+            label="🔄 Aktive Leads",
+            value=f"{active_leads_val:,}",
+            delta=active_delta,
         )
 
     with col4:
-        delta_abs, delta_pct = calculate_delta(df, "notion_yearly_consumption_gwh", days)
-        delta_str = f"{delta_abs:+.2f} GWh" if delta_abs != 0 else None
         st.metric(
             label="⚡ Yearly Consumption",
-            value=f"{latest['notion_yearly_consumption_gwh']:.1f} GWh",
-            delta=delta_str,
+            value=f"{gwh_val:.1f} GWh",
         )
 
 
@@ -261,23 +288,74 @@ def render_sales_section(df: pd.DataFrame):
     col1, col2 = st.columns(2)
 
     with col1:
-        latest = df.iloc[-1]
-        stages = ["Leads Gesamt", "Neue Leads", "Leads gewonnen"]
-        values = [
-            int(latest["zoho_deals_total"]),
-            int(latest["zoho_deals_new"]),
-            int(latest["zoho_deals_won"]),
-        ]
+        leads_df = load_active_leads()
+        if not leads_df.empty and "status" in leads_df.columns:
+            counts = leads_df["status"].value_counts()
+            total = len(leads_df)
+            won = int(counts.get("won", 0))
+            lost = int(counts.get("lost", 0))
+            waiting = int(counts.get("waiting", 0))
+            active_new = int(counts.get("new", 0))
+            active_old = int(counts.get("active", 0))
+        else:
+            zoho_df = df[df["zoho_deals_total"] > 0]
+            latest = zoho_df.iloc[-1] if not zoho_df.empty else df.iloc[-1]
+            total = int(latest.get("zoho_deals_total", 0))
+            won = lost = waiting = active_new = active_old = 0
+
+        stages = ["Gesamt", "Aktiv", "Aktiv (Neu)", "Warteschleife", "Gewonnen", "Verloren"]
+        values = [total, active_old, active_new, waiting, won, lost]
         fig = charts.funnel_chart(stages, values, title="Lead Pipeline (aktuell)")
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         fig = charts.line_chart(
-            df, x="date", y=["zoho_deals_new", "zoho_deals_won"],
-            labels={"zoho_deals_new": "Neue Leads", "zoho_deals_won": "Leads gewonnen"},
+            df, x="date", y=["zoho_deals_total"],
+            labels={"zoho_deals_total": "Leads Gesamt"},
             title="Leads Trend",
         )
         st.plotly_chart(fig, use_container_width=True)
+
+
+def render_active_leads_section():
+    """Rendert Tabellen mit aktiven und neuen Leads aus Zoho."""
+    st.markdown('<p class="section-header">📋 Aktive Leads</p>', unsafe_allow_html=True)
+
+    leads_df = load_active_leads()
+
+    if leads_df.empty:
+        st.info("Keine Lead-Daten verfügbar. Cronjob noch nicht gelaufen.")
+        return
+
+    col_labels = {
+        "name": "Name",
+        "company": "Unternehmen",
+        "stage": "Stage",
+        "amount": "Betrag (€)",
+        "created_date": "Erstellt",
+        "closing_date": "Abschluss",
+    }
+
+    display_cols = ["name", "company", "stage", "amount", "created_date", "closing_date"]
+
+    new_df = leads_df[leads_df["status"] == "new"][display_cols] if "status" in leads_df.columns else pd.DataFrame()
+    active_df = leads_df[leads_df["status"] == "active"][display_cols] if "status" in leads_df.columns else pd.DataFrame()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(f"**🆕 Neu (letzte 14 Tage)** – {len(new_df)} Leads")
+        if not new_df.empty:
+            st.dataframe(new_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Keine neuen Leads in den letzten 14 Tagen.")
+
+    with col2:
+        st.markdown(f"**🔄 Aktiv (älter)** – {len(active_df)} Leads")
+        if not active_df.empty:
+            st.dataframe(active_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Keine weiteren aktiven Leads.")
 
 
 def render_linkedin_energy_section(df: pd.DataFrame):
@@ -328,6 +406,7 @@ def page_dashboard():
     # Sektionen
     render_website_section(filtered_df)
     render_sales_section(filtered_df)
+    render_active_leads_section()
     render_linkedin_energy_section(filtered_df)
 
     # Footer
@@ -342,21 +421,30 @@ def page_dashboard():
 def _calc_ytd_value(daily_df: pd.DataFrame, kpi: str) -> float:
     """
     Berechnet den Year-to-Date Wert für ein KPI.
-    - Snapshot-KPIs (customers_total, consumption): letzter bekannter Wert
-    - Kumulative KPIs (visitors, deals, impressions): Summe über das Jahr
+    - Snapshot-KPIs (customers_total, consumption, deals_total): letzter bekannter Wert
+    - zoho_deals_new: Anzahl Deals aus zoho_leads die dieses Jahr erstellt wurden
+    - Kumulative KPIs (visitors, impressions): Summe über das Jahr
     """
+    current_year = str(datetime.now().year)
+
+    # zoho_deals_new: aus zoho_leads zählen (Deals erstellt in diesem Jahr)
+    if kpi == "zoho_deals_new":
+        leads_df = load_active_leads()
+        if not leads_df.empty and "created_date" in leads_df.columns:
+            return float((leads_df["created_date"].str.startswith(current_year)).sum())
+        return 0.0
+
     if daily_df.empty:
         return 0
 
-    current_year = datetime.now().year
-    year_df = daily_df[pd.to_datetime(daily_df["date"]).dt.year == current_year]
-
+    year_df = daily_df[pd.to_datetime(daily_df["date"]).dt.year == int(current_year)]
     if year_df.empty:
         return 0
 
     # Snapshot-KPIs → letzter Wert
-    if kpi in ("notion_customers_total", "notion_yearly_consumption_gwh"):
-        return float(year_df[kpi].iloc[-1])
+    if kpi in ("notion_customers_total", "notion_yearly_consumption_gwh", "zoho_deals_total"):
+        real_df = year_df[year_df[kpi] > 0] if kpi != "notion_yearly_consumption_gwh" else year_df[year_df[kpi] > 0]
+        return float(real_df[kpi].iloc[-1]) if not real_df.empty else 0.0
 
     # Kumulative KPIs → Summe
     return float(year_df[kpi].sum())
@@ -407,7 +495,7 @@ def render_yearly_targets(daily_df: pd.DataFrame, targets_df: pd.DataFrame):
             unit = target_row.get("unit", "")
 
             # YTD-Wert berechnen
-            if kpi in daily_df.columns:
+            if kpi in daily_df.columns or kpi == "zoho_deals_new":
                 ytd_val = _calc_ytd_value(daily_df, kpi)
             else:
                 ytd_val = 0
@@ -462,8 +550,7 @@ def render_monthly_breakdown(daily_df: pd.DataFrame, monthly_df: pd.DataFrame, t
         "ga_visitors": "ga_visitors_sum",
         "notion_customers_total": "notion_customers_end",
         "notion_yearly_consumption_gwh": "notion_yearly_consumption_gwh",
-        "zoho_deals_new": "zoho_deals_sum",
-        "zoho_deals_won": "zoho_deals_won_sum",
+        "zoho_deals_total": "zoho_deals_total_end",
         "li_impressions": "li_impressions_sum",
         "li_views": "li_views_sum",
     }

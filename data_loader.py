@@ -212,6 +212,21 @@ def load_targets() -> pd.DataFrame:
     return _generate_dummy_targets()
 
 
+@st.cache_data(ttl=config.CACHE_TTL)
+def load_active_leads() -> pd.DataFrame:
+    """Lädt die aktive Lead-Liste aus dem zoho_leads Sheet."""
+    client = _get_gspread_client()
+    if client and config.GOOGLE_SHEETS_ID:
+        try:
+            sheet = client.open_by_key(config.GOOGLE_SHEETS_ID)
+            worksheet = sheet.worksheet("zoho_leads")
+            data = worksheet.get_all_records()
+            return pd.DataFrame(data)
+        except Exception as e:
+            logger.warning(f"zoho_leads Sheet nicht gefunden: {e}")
+    return pd.DataFrame()
+
+
 def is_using_dummy_data() -> bool:
     """Prüft ob Dummy-Daten verwendet werden."""
     return not (config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON)

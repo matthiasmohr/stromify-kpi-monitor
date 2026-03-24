@@ -42,9 +42,7 @@ DAILY_COLUMNS = [
     "ga_bounce_rate",
     "notion_customers_total",
     "notion_yearly_consumption_gwh",
-    "zoho_deals_new",
     "zoho_deals_total",
-    "zoho_deals_won",
     "li_impressions",
     "li_views",
 ]
@@ -56,8 +54,7 @@ MONTHLY_COLUMNS = [
     "notion_customers_end",
     "notion_customers_new",
     "notion_yearly_consumption_gwh",
-    "zoho_deals_sum",
-    "zoho_deals_won_sum",
+    "zoho_deals_total_end",
     "li_impressions_sum",
     "li_views_sum",
 ]
@@ -74,6 +71,9 @@ KPI_DISPLAY = {
     "zoho_deals_new": {"label": "Neue Leads", "icon": "🎯", "format": "{:,.0f}", "category": "Sales"},
     "zoho_deals_total": {"label": "Leads Gesamt", "icon": "📋", "format": "{:,.0f}", "category": "Sales"},
     "zoho_deals_won": {"label": "Leads gewonnen", "icon": "✅", "format": "{:,.0f}", "category": "Sales"},
+    "zoho_deals_lost": {"label": "Leads verloren", "icon": "❌", "format": "{:,.0f}", "category": "Sales"},
+    "zoho_deals_waiting": {"label": "Warteschleife", "icon": "⏳", "format": "{:,.0f}", "category": "Sales"},
+    "zoho_deals_active": {"label": "Leads aktiv", "icon": "🔄", "format": "{:,.0f}", "category": "Sales"},
     "li_impressions": {"label": "LinkedIn Impressions", "icon": "👁️", "format": "{:,.0f}", "category": "Social"},
     "li_views": {"label": "LinkedIn Views", "icon": "📺", "format": "{:,.0f}", "category": "Social"},
 }

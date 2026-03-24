@@ -90,6 +90,82 @@ def _get_records(api_domain: str, access_token: str, module: str, criteria: str 
     return all_records
 
 
+def fetch_zoho_all_leads(
+    client_id: str,
+    client_secret: str,
+    refresh_token: str,
+    api_domain: str = "https://www.zohoapis.eu",
+    accounts_url: str = "https://accounts.zoho.eu",
+) -> list:
+    """
+    Holt ALLE Deals aus Zoho mit Status-Attribut.
+    Status: "new" | "active" | "won" | "lost" | "waiting"
+    "new" = aktiv + in den letzten 14 Tagen erstellt
+    "active" = aktiv + älter als 14 Tage
+    """
+    WON_STAGES = ["Gewonnen, Freigabe erhalten", "Abgeschlossen, gewonnen", "Abgewickelt, -> OPS"]
+    LOST_STAGES = ["Abgeschlossen, verloren"]
+    WAITING_STAGES = ["Warteschleife"]
+    cutoff_14d = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+
+    try:
+        access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
+        headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
+
+        all_deals = []
+        page = 1
+        while True:
+            params = {
+                "fields": "Deal_Name,Account_Name,Stage,Amount,Created_Time,Closing_Date",
+                "per_page": "200",
+                "page": str(page),
+            }
+            response = requests.get(f"{api_domain}/crm/v8/Deals", headers=headers, params=params, timeout=30)
+            if response.status_code == 204:
+                break
+            response.raise_for_status()
+            data = response.json()
+            all_deals.extend(data.get("data", []))
+            if not data.get("info", {}).get("more_records", False):
+                break
+            page += 1
+
+        result = []
+        for deal in all_deals:
+            stage = deal.get("Stage", "")
+            created_str = deal.get("Created_Time", "")[:10]
+            account = deal.get("Account_Name")
+
+            if stage in WON_STAGES:
+                status = "won"
+            elif stage in LOST_STAGES:
+                status = "lost"
+            elif stage in WAITING_STAGES:
+                status = "waiting"
+            elif created_str >= cutoff_14d:
+                status = "new"
+            else:
+                status = "active"
+
+            result.append({
+                "name": deal.get("Deal_Name", ""),
+                "company": account.get("name", "") if isinstance(account, dict) else str(account or ""),
+                "stage": stage,
+                "status": status,
+                "amount": deal.get("Amount"),
+                "created_date": created_str,
+                "closing_date": deal.get("Closing_Date", ""),
+            })
+
+        counts = {s: sum(1 for d in result if d["status"] == s) for s in ("new", "active", "won", "lost", "waiting")}
+        logger.info(f"Zoho alle Leads: {len(result)} gesamt – {counts}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen aller Zoho-Leads: {e}")
+        return []
+
+
 def fetch_zoho_data(
     client_id: str,
     client_secret: str,
@@ -110,49 +186,12 @@ def fetch_zoho_data(
     Returns:
         dict mit zoho_deals_new, zoho_deals_total, zoho_deals_won
     """
-    # Stages die als "gewonnen" zählen
-    WON_STAGES = [
-        "Gewonnen, Freigabe erhalten",
-        "Abgeschlossen, gewonnen",
-        "Abgewickelt, -> OPS",
-    ]
-
     try:
-        # Access Token erneuern
         access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
-
-        # Heute (DateTime-Format für Created_Time)
-        today_start = datetime.now().strftime("%Y-%m-%dT00:00:00+02:00")
-        today_end = datetime.now().strftime("%Y-%m-%dT23:59:59+02:00")
-
-        # Deals Gesamt
         deals_total = _get_records_count(api_domain, access_token, "Deals")
-
-        # Neue Deals (heute erstellt)
-        new_deals_criteria = f"(Created_Time:greater_equal:{today_start})and(Created_Time:less_equal:{today_end})"
-        deals_new = _get_records_count(api_domain, access_token, "Deals", new_deals_criteria)
-
-        # Gewonnene Deals (alle 3 gewonnenen Stages zusammenzählen)
-        deals_won = 0
-        for stage in WON_STAGES:
-            won_criteria = f"(Stage:equals:{stage})"
-            deals_won += _get_records_count(api_domain, access_token, "Deals", won_criteria)
-
-        logger.info(
-            f"Zoho Daten: {deals_new} neue Deals, {deals_total} gesamt, "
-            f"{deals_won} gewonnen"
-        )
-
-        return {
-            "zoho_deals_new": deals_new,
-            "zoho_deals_total": deals_total,
-            "zoho_deals_won": deals_won,
-        }
+        logger.info(f"Zoho Daten: {deals_total} Deals gesamt")
+        return {"zoho_deals_total": deals_total}
 
     except Exception as e:
         logger.error(f"Fehler beim Abrufen der Zoho-Daten: {e}")
-        return {
-            "zoho_deals_new": 0,
-            "zoho_deals_total": 0,
-            "zoho_deals_won": 0,
-        }
+        return {"zoho_deals_total": 0}

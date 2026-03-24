@@ -86,6 +86,9 @@ Der Cronjob sammelt Daten aus allen Quellen und schreibt sie ins Google Sheet.
 # Einmalig ausführen
 python -m cronjob.main
 
+# für historische Nachbeladung
+python3 -m cronjob.main --backfill 30
+
 # Als dauerhafter Prozess (täglich um 22:00)
 python -m cronjob.main --schedule
 

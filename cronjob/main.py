@@ -31,11 +31,11 @@ logger = logging.getLogger("cronjob")
 sys.path.insert(0, ".")
 
 import config
-from cronjob.fetch_ga import fetch_ga_data
+from cronjob.fetch_ga import fetch_ga_data, fetch_ga_historical
 from cronjob.fetch_notion import fetch_notion_data
-from cronjob.fetch_zoho import fetch_zoho_data
+from cronjob.fetch_zoho import fetch_zoho_data, fetch_zoho_all_leads
 from cronjob.fetch_linkedin import fetch_linkedin_data
-from cronjob.sheet_writer import write_daily_row, update_monthly_aggregation
+from cronjob.sheet_writer import write_daily_row, update_monthly_aggregation, backfill_ga_rows, write_active_leads
 
 
 def _get_google_credentials():
@@ -103,6 +103,17 @@ def run_fetch():
                 config.ZOHO_ACCOUNTS_URL,
             )
             all_data.update(zoho_data)
+
+            # Alle Leads mit Status für Dashboard-Tabelle
+            active_leads = fetch_zoho_all_leads(
+                config.ZOHO_CLIENT_ID,
+                config.ZOHO_CLIENT_SECRET,
+                config.ZOHO_REFRESH_TOKEN,
+                config.ZOHO_API_DOMAIN,
+                config.ZOHO_ACCOUNTS_URL,
+            )
+            if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
+                write_active_leads(active_leads)
         except Exception as e:
             errors.append(f"Zoho: {e}")
             logger.error(f"Zoho Fehler: {e}")
@@ -155,6 +166,29 @@ def run_fetch():
     return all_data, errors
 
 
+def run_backfill(days: int = 90):
+    """Füllt historische GA4-Daten für fehlende Tage im Sheet nach."""
+    logger.info("=" * 60)
+    logger.info(f"GA4 Backfill gestartet: letzte {days} Tage")
+    logger.info("=" * 60)
+
+    if not config.GA_PROPERTY_ID or not config.GOOGLE_SERVICE_ACCOUNT_JSON:
+        logger.error("GA4 nicht konfiguriert (GA_PROPERTY_ID oder GOOGLE_SERVICE_ACCOUNT_JSON fehlt)")
+        return
+
+    try:
+        credentials = _get_google_credentials()
+        ga_history = fetch_ga_historical(config.GA_PROPERTY_ID, credentials, days=days)
+        if ga_history:
+            backfill_ga_rows(ga_history)
+            update_monthly_aggregation()
+            logger.info("✅ Backfill abgeschlossen")
+        else:
+            logger.warning("Keine historischen GA4-Daten erhalten")
+    except Exception as e:
+        logger.error(f"Backfill Fehler: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Stromify KPI Cronjob")
     parser.add_argument(
@@ -168,9 +202,18 @@ def main():
         default=None,
         help="Intervall in Minuten für wiederkehrende Ausführung",
     )
+    parser.add_argument(
+        "--backfill",
+        type=int,
+        metavar="DAYS",
+        default=None,
+        help="Historische GA4-Daten nachfüllen (z.B. --backfill 90)",
+    )
     args = parser.parse_args()
 
-    if args.schedule or args.interval:
+    if args.backfill:
+        run_backfill(days=args.backfill)
+    elif args.schedule or args.interval:
         import schedule
         import time
 
