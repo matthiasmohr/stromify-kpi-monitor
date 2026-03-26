@@ -5,6 +5,7 @@ Schreibt KPI-Daten in das Google Sheet.
 import json
 import base64
 import logging
+import time
 from datetime import datetime
 
 import gspread
@@ -51,6 +52,20 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
+
+
+def _retry(fn, retries: int = 3, delay: int = 15):
+    """Führt fn aus, wiederholt bei 429-Fehler mit Wartezeit."""
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            if "429" in str(e) and attempt < retries - 1:
+                wait = delay * (attempt + 1)
+                logger.warning(f"Rate Limit (429) – warte {wait}s, Versuch {attempt + 2}/{retries}")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def _get_client() -> gspread.Client:
@@ -186,8 +201,8 @@ def write_active_leads(leads: list):
             lead.get("closing_date", ""),
         ])
 
-    worksheet.clear()
-    worksheet.update("A1", rows, value_input_option="RAW")
+    _retry(lambda: worksheet.clear())
+    _retry(lambda: worksheet.update("A1", rows, value_input_option="RAW"))
     logger.info(f"zoho_leads Sheet aktualisiert: {len(leads)} Deals total")
 
 

@@ -93,6 +93,7 @@ def run_fetch():
 
     # 3. Zoho CRM
     logger.info("🎯 Hole Zoho CRM Daten...")
+    active_leads = []
     if config.ZOHO_CLIENT_ID and config.ZOHO_CLIENT_SECRET and config.ZOHO_REFRESH_TOKEN:
         try:
             zoho_data = fetch_zoho_data(
@@ -103,8 +104,13 @@ def run_fetch():
                 config.ZOHO_ACCOUNTS_URL,
             )
             all_data.update(zoho_data)
+        except Exception as e:
+            errors.append(f"Zoho: {e}")
+            logger.error(f"Zoho Fehler: {e}")
 
-            # Alle Leads mit Status für Dashboard-Tabelle
+        try:
+            # Alle Leads mit Status für Dashboard-Tabelle (separat, damit Sheets-Fehler
+            # nicht als Zoho-Fehler geloggt werden)
             active_leads = fetch_zoho_all_leads(
                 config.ZOHO_CLIENT_ID,
                 config.ZOHO_CLIENT_SECRET,
@@ -112,11 +118,9 @@ def run_fetch():
                 config.ZOHO_API_DOMAIN,
                 config.ZOHO_ACCOUNTS_URL,
             )
-            if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
-                write_active_leads(active_leads)
         except Exception as e:
-            errors.append(f"Zoho: {e}")
-            logger.error(f"Zoho Fehler: {e}")
+            errors.append(f"Zoho Leads: {e}")
+            logger.error(f"Zoho Leads Fehler: {e}")
     else:
         logger.warning("Zoho nicht konfiguriert (ZOHO_CLIENT_ID, SECRET oder REFRESH_TOKEN fehlt)")
 
@@ -139,14 +143,25 @@ def run_fetch():
 
     # 5. In Google Sheets schreiben
     logger.info("📝 Schreibe Daten in Google Sheets...")
-    if all_data and config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
-        try:
-            write_daily_row(all_data)
-            update_monthly_aggregation()
-            logger.info("✅ Daten erfolgreich geschrieben")
-        except Exception as e:
-            errors.append(f"Sheet Writer: {e}")
-            logger.error(f"Sheet Writer Fehler: {e}")
+    if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
+        # 5a. KPI-Tagesdaten
+        if all_data:
+            try:
+                write_daily_row(all_data)
+                update_monthly_aggregation()
+                logger.info("✅ KPI-Daten erfolgreich geschrieben")
+            except Exception as e:
+                errors.append(f"Sheet Writer: {e}")
+                logger.error(f"Sheet Writer Fehler: {e}")
+
+        # 5b. Zoho Lead-Liste (separat, damit Fehler hier nicht alles blockieren)
+        if active_leads:
+            try:
+                write_active_leads(active_leads)
+                logger.info("✅ Zoho Lead-Liste geschrieben")
+            except Exception as e:
+                errors.append(f"Zoho Leads Sheet: {e}")
+                logger.error(f"Zoho Leads Sheet Fehler: {e}")
     else:
         logger.warning("Google Sheets nicht konfiguriert oder keine Daten vorhanden")
         if all_data:
