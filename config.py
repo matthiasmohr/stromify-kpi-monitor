@@ -43,6 +43,11 @@ DAILY_COLUMNS = [
     "notion_customers_total",
     "notion_yearly_consumption_gwh",
     "zoho_deals_total",
+    "zoho_deals_new",
+    "zoho_deals_active",
+    "zoho_deals_won",
+    "zoho_deals_lost",
+    "zoho_deals_waiting",
     "li_impressions",
     "li_views",
 ]
@@ -55,6 +60,11 @@ MONTHLY_COLUMNS = [
     "notion_customers_new",
     "notion_yearly_consumption_gwh",
     "zoho_deals_total_end",
+    "zoho_deals_new_end",
+    "zoho_deals_active_end",
+    "zoho_deals_won_end",
+    "zoho_deals_lost_end",
+    "zoho_deals_waiting_end",
     "li_impressions_sum",
     "li_views_sum",
 ]

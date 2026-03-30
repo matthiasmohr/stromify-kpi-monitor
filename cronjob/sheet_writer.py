@@ -114,6 +114,11 @@ def write_daily_row(data: dict):
         data.get("notion_customers_total", 0),
         data.get("notion_yearly_consumption_gwh", 0.0),
         data.get("zoho_deals_total", 0),
+        data.get("zoho_deals_new", 0),
+        data.get("zoho_deals_active", 0),
+        data.get("zoho_deals_won", 0),
+        data.get("zoho_deals_lost", 0),
+        data.get("zoho_deals_waiting", 0),
         data.get("li_impressions", 0),
         data.get("li_views", 0),
     ]
@@ -162,6 +167,11 @@ def backfill_ga_rows(ga_history: dict):
             0,    # notion_customers_total – unbekannt für historische Tage
             0.0,  # notion_yearly_consumption_gwh
             0,    # zoho_deals_total
+            0,    # zoho_deals_new
+            0,    # zoho_deals_active
+            0,    # zoho_deals_won
+            0,    # zoho_deals_lost
+            0,    # zoho_deals_waiting
             0,    # li_impressions
             0,    # li_views
         ]
@@ -280,6 +290,16 @@ def update_monthly_aggregation():
     zoho_df = month_df[month_df["zoho_deals_total"] > 0]
     zoho_total_end = int(zoho_df["zoho_deals_total"].iloc[-1]) if not zoho_df.empty else 0
 
+    # Zoho Status-Snapshots: letzter bekannter Wert pro Status
+    zoho_status_cols = ["zoho_deals_new", "zoho_deals_active", "zoho_deals_won", "zoho_deals_lost", "zoho_deals_waiting"]
+    zoho_status_ends = {}
+    for col in zoho_status_cols:
+        if col in month_df.columns:
+            col_df = month_df[month_df[col] > 0]
+            zoho_status_ends[col] = int(col_df[col].iloc[-1]) if not col_df.empty else 0
+        else:
+            zoho_status_ends[col] = 0
+
     monthly_row = [
         current_month,
         int(month_df["ga_visitors"].sum()),
@@ -288,6 +308,11 @@ def update_monthly_aggregation():
         int(_calc_customers_new(df, current_month)),
         gwh_end,
         zoho_total_end,
+        zoho_status_ends["zoho_deals_new"],
+        zoho_status_ends["zoho_deals_active"],
+        zoho_status_ends["zoho_deals_won"],
+        zoho_status_ends["zoho_deals_lost"],
+        zoho_status_ends["zoho_deals_waiting"],
         int(month_df["li_impressions"].sum()),
         int(month_df["li_views"].sum()),
     ]

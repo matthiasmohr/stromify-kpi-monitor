@@ -118,6 +118,18 @@ def run_fetch():
                 config.ZOHO_API_DOMAIN,
                 config.ZOHO_ACCOUNTS_URL,
             )
+            # Status-Counts für tägliche Historisierung
+            if active_leads:
+                status_counts = {}
+                for lead in active_leads:
+                    s = lead.get("status", "")
+                    status_counts[s] = status_counts.get(s, 0) + 1
+                all_data["zoho_deals_new"] = status_counts.get("new", 0)
+                all_data["zoho_deals_active"] = status_counts.get("active", 0)
+                all_data["zoho_deals_won"] = status_counts.get("won", 0)
+                all_data["zoho_deals_lost"] = status_counts.get("lost", 0)
+                all_data["zoho_deals_waiting"] = status_counts.get("waiting", 0)
+                logger.info(f"Zoho Status-Counts: {status_counts}")
         except Exception as e:
             errors.append(f"Zoho Leads: {e}")
             logger.error(f"Zoho Leads Fehler: {e}")
