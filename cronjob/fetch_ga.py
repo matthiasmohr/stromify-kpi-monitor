@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_ga_data(property_id: str, credentials) -> dict:
     """
-    Holt Website-KPIs aus Google Analytics für den heutigen Tag.
+    Holt Website-KPIs aus Google Analytics für gestern (vollständiger Tag).
 
     Args:
         property_id: GA4 Property ID (z.B. "properties/123456789")
@@ -32,7 +32,7 @@ def fetch_ga_data(property_id: str, credentials) -> dict:
 
         request = RunReportRequest(
             property=property_id,
-            date_ranges=[DateRange(start_date="today", end_date="today")],
+            date_ranges=[DateRange(start_date="yesterday", end_date="yesterday")],
             metrics=[
                 Metric(name="totalUsers"),
                 Metric(name="sessions"),
