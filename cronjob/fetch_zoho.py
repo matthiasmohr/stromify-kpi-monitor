@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 def _refresh_access_token(client_id: str, client_secret: str, refresh_token: str, accounts_url: str) -> str:
     """Erneuert den Zoho Access Token via Refresh Token."""
+    logger.info(f"Zoho Token-Refresh: accounts_url={accounts_url}, client_id={client_id[:8]}...")
     response = requests.post(
         f"{accounts_url}/oauth/v2/token",
         params={
@@ -21,7 +22,9 @@ def _refresh_access_token(client_id: str, client_secret: str, refresh_token: str
         },
         timeout=30,
     )
-    response.raise_for_status()
+    if response.status_code != 200:
+        logger.error(f"Zoho Token-Refresh fehlgeschlagen: HTTP {response.status_code}, Body: {response.text}")
+        response.raise_for_status()
     data = response.json()
 
     access_token = data.get("access_token")
