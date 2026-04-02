@@ -121,6 +121,7 @@ def write_daily_row(data: dict):
         data.get("zoho_deals_won", 0),
         data.get("zoho_deals_lost", 0),
         data.get("zoho_deals_waiting", 0),
+        data.get("auth0_mau", 0),
         data.get("li_impressions", 0),
         data.get("li_views", 0),
     ]
@@ -321,6 +322,7 @@ def update_monthly_aggregation():
         zoho_status_ends["zoho_deals_won"],
         zoho_status_ends["zoho_deals_lost"],
         zoho_status_ends["zoho_deals_waiting"],
+        int(month_df["auth0_mau"].max()) if "auth0_mau" in month_df.columns else 0,
         int(month_df["li_impressions"].sum()),
         int(month_df["li_views"].sum()),
     ]

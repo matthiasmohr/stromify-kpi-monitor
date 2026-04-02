@@ -35,6 +35,7 @@ from cronjob.fetch_ga import fetch_ga_data, fetch_ga_historical
 from cronjob.fetch_notion import fetch_notion_data
 from cronjob.fetch_zoho import fetch_zoho_data, fetch_zoho_all_leads
 from cronjob.fetch_linkedin import fetch_linkedin_data
+from cronjob.fetch_auth0 import fetch_auth0_data
 from cronjob.sheet_writer import write_daily_row, update_monthly_aggregation, backfill_ga_rows, write_active_leads
 
 
@@ -153,7 +154,23 @@ def run_fetch():
     else:
         logger.warning("LinkedIn nicht konfiguriert – übersprungen")
 
-    # 5. In Google Sheets schreiben
+    # 5. Auth0
+    logger.info("📱 Hole Auth0 Daten...")
+    if config.AUTH0_DOMAIN and config.AUTH0_CLIENT_ID and config.AUTH0_CLIENT_SECRET:
+        try:
+            auth0_data = fetch_auth0_data(
+                config.AUTH0_DOMAIN,
+                config.AUTH0_CLIENT_ID,
+                config.AUTH0_CLIENT_SECRET,
+            )
+            all_data.update(auth0_data)
+        except Exception as e:
+            errors.append(f"Auth0: {e}")
+            logger.error(f"Auth0 Fehler: {e}")
+    else:
+        logger.warning("Auth0 nicht konfiguriert – übersprungen")
+
+    # 6. In Google Sheets schreiben
     logger.info("📝 Schreibe Daten in Google Sheets...")
     if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
         # 5a. KPI-Tagesdaten

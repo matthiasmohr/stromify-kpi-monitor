@@ -109,6 +109,7 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
             "notion_yearly_consumption_gwh": gwh,
             "notion_provision_eur": round(gwh * 8000, 0),  # Platzhalter: ~8k€ pro GWh
             "manual_license_revenue": 0.0,
+            "auth0_mau": int(10 + i * 0.5 + random.uniform(-2, 2)),
             "zoho_deals_new": deals_new,
             "zoho_deals_total": deals_total,
             "zoho_deals_won": deals_won,

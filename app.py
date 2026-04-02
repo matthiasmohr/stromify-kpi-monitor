@@ -235,22 +235,28 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     prov_val = round(float(df[df["notion_provision_eur"] > 0]["notion_provision_eur"].iloc[-1]), 0) if "notion_provision_eur" in df.columns and not df[df["notion_provision_eur"] > 0].empty else 0.0
     license_val = round(float(period_df["manual_license_revenue"].sum()), 0) if "manual_license_revenue" in period_df.columns else 0.0
 
-    # Zeile 1
-    col1, col2, col3 = st.columns(3)
+    # Auth0 MAU
+    mau_df = df[df["auth0_mau"] > 0] if "auth0_mau" in df.columns else pd.DataFrame()
+    mau_val = int(mau_df["auth0_mau"].iloc[-1]) if not mau_df.empty else 0
+
+    # Zeile 1: User & Sales
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric(label=f"🌐 Website Besucher ({days}d)", value=f"{ga_val:,}", delta=ga_delta)
     with col2:
         st.metric(label="👥 Kunden Gesamt", value=f"{customers_val:,}", delta=customers_delta)
     with col3:
         st.metric(label="🔄 Aktive Leads", value=f"{active_leads_val:,}", delta=active_delta)
-
-    # Zeile 2
-    col4, col5, col6 = st.columns(3)
     with col4:
-        st.metric(label="⚡ Yearly Consumption", value=f"{gwh_val:.1f} GWh")
+        st.metric(label="📱 Active Users", value=f"{mau_val:,}")
+
+    # Zeile 2: Revenue & Energy
+    col5, col6, col7 = st.columns(3)
     with col5:
-        st.metric(label="💰 Provision Energie", value=f"{prov_val:,.0f} €")
+        st.metric(label="⚡ Yearly Consumption", value=f"{gwh_val:.1f} GWh")
     with col6:
+        st.metric(label="💰 Provision Energie", value=f"{prov_val:,.0f} €")
+    with col7:
         st.metric(label="📄 Lizenzumsatz", value=f"{license_val:,.0f} €")
 
 
@@ -367,8 +373,8 @@ def render_linkedin_energy_section(df: pd.DataFrame):
         st.plotly_chart(fig, use_container_width=True)
     with col_li2:
         fig = charts.area_chart(
-            df, x="date", y="li_views",
-            title="LinkedIn Views",
+            df, x="date", y="auth0_mau",
+            title="Active Users (MAU)",
             color="#4ECDC4",
         )
         st.plotly_chart(fig, use_container_width=True)
