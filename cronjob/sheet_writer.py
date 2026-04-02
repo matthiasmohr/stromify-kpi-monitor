@@ -113,6 +113,8 @@ def write_daily_row(data: dict):
         data.get("ga_bounce_rate", 0.0),
         data.get("notion_customers_total", 0),
         data.get("notion_yearly_consumption_gwh", 0.0),
+        data.get("notion_provision_eur", 0.0),
+        data.get("manual_license_revenue", 0.0),
         data.get("zoho_deals_total", 0),
         data.get("zoho_deals_new", 0),
         data.get("zoho_deals_active", 0),
@@ -280,11 +282,15 @@ def update_monthly_aggregation():
         logger.warning(f"Keine Daten für Monat {current_month}")
         return
 
-    # Für Snapshot-Werte (customers, gwh) nur Zeilen mit echten Daten nutzen
+    # Für Snapshot-Werte (customers, gwh, provision) nur Zeilen mit echten Daten nutzen
     # (Backfill-Zeilen haben 0 für Notion-Felder)
     month_real = month_df[month_df["notion_customers_total"] > 0]
     customers_end = int(month_real["notion_customers_total"].iloc[-1]) if not month_real.empty else 0
     gwh_end = round(float(month_real["notion_yearly_consumption_gwh"].iloc[-1]), 2) if not month_real.empty else 0.0
+    provision_end = round(float(month_real["notion_provision_eur"].iloc[-1]), 2) if not month_real.empty and "notion_provision_eur" in month_real.columns else 0.0
+
+    # manual_license_revenue: Summe aller manuellen Einträge im Monat
+    license_sum = round(float(month_df["manual_license_revenue"].sum()), 2) if "manual_license_revenue" in month_df.columns else 0.0
 
     # Zoho-Snapshot: letzter bekannter Gesamtwert des Monats
     zoho_df = month_df[month_df["zoho_deals_total"] > 0]
@@ -307,6 +313,8 @@ def update_monthly_aggregation():
         customers_end,
         int(_calc_customers_new(df, current_month)),
         gwh_end,
+        provision_end,
+        license_sum,
         zoho_total_end,
         zoho_status_ends["zoho_deals_new"],
         zoho_status_ends["zoho_deals_active"],

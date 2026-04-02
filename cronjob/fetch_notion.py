@@ -97,6 +97,7 @@ def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> 
 
             malos = _query_all(api_key, malos_ds_id)
             total_kwh = 0.0
+            total_provision = 0.0
             for page in malos:
                 props = page.get("properties", {})
                 kwh_prop = props.get("JVP (kWh)", {})
@@ -104,13 +105,22 @@ def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> 
                     val = kwh_prop.get("number")
                     if val and val > 0:
                         total_kwh += val
+                # "Provision Gesamt" ist ein Formula-Feld
+                prov_prop = props.get("Provision Gesamt", {})
+                if prov_prop.get("type") == "formula":
+                    formula_val = prov_prop.get("formula", {})
+                    val = formula_val.get("number")
+                    if val and val > 0:
+                        total_provision += val
             total_gwh = round(total_kwh / 1_000_000, 2)
+            total_provision = round(total_provision, 2)
 
-        logger.info(f"Notion Daten: {customers_total} Kunden, {total_gwh} GWh Jahresverbrauch")
+        logger.info(f"Notion Daten: {customers_total} Kunden, {total_gwh} GWh, {total_provision} EUR Provision")
 
         return {
             "notion_customers_total": customers_total,
             "notion_yearly_consumption_gwh": total_gwh,
+            "notion_provision_eur": total_provision,
         }
 
     except Exception as e:
@@ -118,4 +128,5 @@ def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> 
         return {
             "notion_customers_total": 0,
             "notion_yearly_consumption_gwh": 0.0,
+            "notion_provision_eur": 0.0,
         }

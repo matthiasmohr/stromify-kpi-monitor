@@ -107,6 +107,8 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
             "ga_bounce_rate": bounce_rate,
             "notion_customers_total": customers,
             "notion_yearly_consumption_gwh": gwh,
+            "notion_provision_eur": round(gwh * 8000, 0),  # Platzhalter: ~8k€ pro GWh
+            "manual_license_revenue": 0.0,
             "zoho_deals_new": deals_new,
             "zoho_deals_total": deals_total,
             "zoho_deals_won": deals_won,
@@ -145,7 +147,7 @@ def _generate_dummy_targets() -> pd.DataFrame:
         {"kpi": "ga_visitors", "target_yearly": 120000, "unit": "Besucher", "category": "Website"},
         {"kpi": "notion_customers_total", "target_yearly": 100, "unit": "Kunden", "category": "Sales"},
         {"kpi": "notion_yearly_consumption_gwh", "target_yearly": 10.0, "unit": "GWh", "category": "Energy"},
-        {"kpi": "zoho_deals_new", "target_yearly": 500, "unit": "Deals", "category": "Sales"},
+        {"kpi": "zoho_deals_new", "target_yearly": 500, "unit": "Leads", "category": "Sales"},
         {"kpi": "li_impressions", "target_yearly": 600000, "unit": "Impressions", "category": "Social"},
         {"kpi": "li_views", "target_yearly": 100000, "unit": "Views", "category": "Social"},
     ])

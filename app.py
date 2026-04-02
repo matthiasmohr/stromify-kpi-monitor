@@ -220,42 +220,38 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     customers_prev = int(customers_prev_df["notion_customers_total"].iloc[-1]) if not customers_prev_df.empty else 0
     customers_delta = f"{customers_val - customers_prev:+.0f}" if customers_prev > 0 else None
 
-    col1, col2, col3, col4 = st.columns(4)
+    # Leads aus zoho_leads Sheet
+    leads_df = load_active_leads()
+    if not leads_df.empty and "status" in leads_df.columns:
+        active_leads_val = int(leads_df["status"].isin(["new", "active"]).sum())
+        new_leads_val = int((leads_df["status"] == "new").sum())
+        active_delta = f"davon {new_leads_val} neu" if new_leads_val > 0 else None
+    else:
+        active_leads_val = 0
+        active_delta = None
 
+    # Provision & Lizenzumsatz (Snapshot / letzter bekannter Wert)
+    prov_df = df[df.get("notion_provision_eur", pd.Series(dtype=float)).gt(0)] if "notion_provision_eur" in df.columns else pd.DataFrame()
+    prov_val = round(float(df[df["notion_provision_eur"] > 0]["notion_provision_eur"].iloc[-1]), 0) if "notion_provision_eur" in df.columns and not df[df["notion_provision_eur"] > 0].empty else 0.0
+    license_val = round(float(period_df["manual_license_revenue"].sum()), 0) if "manual_license_revenue" in period_df.columns else 0.0
+
+    # Zeile 1
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric(
-            label=f"🌐 Website Besucher ({days}d)",
-            value=f"{ga_val:,}",
-            delta=ga_delta,
-        )
-
+        st.metric(label=f"🌐 Website Besucher ({days}d)", value=f"{ga_val:,}", delta=ga_delta)
     with col2:
-        st.metric(
-            label="👥 Kunden Gesamt",
-            value=f"{customers_val:,}",
-            delta=customers_delta,
-        )
-
+        st.metric(label="👥 Kunden Gesamt", value=f"{customers_val:,}", delta=customers_delta)
     with col3:
-        leads_df = load_active_leads()
-        if not leads_df.empty and "status" in leads_df.columns:
-            active_leads_val = int(leads_df["status"].isin(["new", "active"]).sum())
-            new_leads_val = int((leads_df["status"] == "new").sum())
-            active_delta = f"davon {new_leads_val} neu" if new_leads_val > 0 else None
-        else:
-            active_leads_val = 0
-            active_delta = None
-        st.metric(
-            label="🔄 Aktive Leads",
-            value=f"{active_leads_val:,}",
-            delta=active_delta,
-        )
+        st.metric(label="🔄 Aktive Leads", value=f"{active_leads_val:,}", delta=active_delta)
 
+    # Zeile 2
+    col4, col5, col6 = st.columns(3)
     with col4:
-        st.metric(
-            label="⚡ Yearly Consumption",
-            value=f"{gwh_val:.1f} GWh",
-        )
+        st.metric(label="⚡ Yearly Consumption", value=f"{gwh_val:.1f} GWh")
+    with col5:
+        st.metric(label="💰 Provision Energie", value=f"{prov_val:,.0f} €")
+    with col6:
+        st.metric(label="📄 Lizenzumsatz", value=f"{license_val:,.0f} €")
 
 
 def render_website_section(df: pd.DataFrame):
@@ -427,12 +423,10 @@ def _calc_ytd_value(daily_df: pd.DataFrame, kpi: str) -> float:
     """
     current_year = str(datetime.now().year)
 
-    # zoho_deals_new: aus zoho_leads zählen (Deals erstellt in diesem Jahr)
+    # zoho_deals_new: Gesamtanzahl aller Leads aus zoho_leads
     if kpi == "zoho_deals_new":
         leads_df = load_active_leads()
-        if not leads_df.empty and "created_date" in leads_df.columns:
-            return float((leads_df["created_date"].str.startswith(current_year)).sum())
-        return 0.0
+        return float(len(leads_df)) if not leads_df.empty else 0.0
 
     if daily_df.empty:
         return 0
