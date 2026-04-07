@@ -2,6 +2,7 @@
 Stromify KPI Monitor - Dashboard
 Streamlit-Frontend zur Visualisierung der Unternehmens-KPIs.
 """
+import hashlib
 import threading
 import logging
 import streamlit as st
@@ -42,13 +43,22 @@ if "scheduler_started" not in st.session_state:
     t.start()
     logger.info("🕐 Hintergrund-Scheduler gestartet (täglich 21:00)")
 
-# --- Page Config ---
+# --- Page Config (muss absolut erster Streamlit-Call sein) ---
 st.set_page_config(
     page_title="Stromify KPI Monitor",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# --- Cookie Controller (nach set_page_config, aber vor allen anderen st-Calls) ---
+_cookie_controller = None
+if config.DASHBOARD_PASSWORD:
+    try:
+        from streamlit_cookies_controller import CookieController
+        _cookie_controller = CookieController()
+    except Exception:
+        pass
 
 # --- Custom CSS ---
 st.markdown("""
@@ -614,7 +624,51 @@ def page_targets():
 # Main Router
 # ============================================================
 
+def _check_auth() -> bool:
+    """Prüft ob der User eingeloggt ist. Gibt True zurück wenn Zugriff erlaubt."""
+    password = config.DASHBOARD_PASSWORD
+    if not password:
+        return True  # Kein Passwort konfiguriert → offen
+
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+
+    # Cookie prüfen (Controller wurde auf Top-Level instanziiert)
+    if _cookie_controller is not None:
+        try:
+            if _cookie_controller.get("stromify_auth") == pw_hash:
+                return True
+        except Exception:
+            pass
+
+    # Session prüfen (direkt nach Login, bevor Cookie beim nächsten Load gelesen wird)
+    if st.session_state.get("authenticated"):
+        return True
+
+    # Login-Formular
+    st.markdown(
+        "<h1 style='text-align:center; margin-top: 80px;'>⚡ Stromify KPI Monitor</h1>",
+        unsafe_allow_html=True,
+    )
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        pw_input = st.text_input("Passwort", type="password", label_visibility="collapsed",
+                                  placeholder="Passwort eingeben...")
+        if st.button("Login", use_container_width=True):
+            if hashlib.sha256(pw_input.encode()).hexdigest() == pw_hash:
+                st.session_state["authenticated"] = True
+                if _cookie_controller is not None:
+                    _cookie_controller.set("stromify_auth", pw_hash,
+                                           max_age=60 * 60 * 24 * 365 * 10)
+                st.rerun()
+            else:
+                st.error("Falsches Passwort")
+    return False
+
+
 def main():
+    if not _check_auth():
+        st.stop()
+
     if "page" not in st.session_state:
         st.session_state.page = "dashboard"
 
