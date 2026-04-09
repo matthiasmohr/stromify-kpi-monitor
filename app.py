@@ -256,7 +256,7 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     with col2:
         st.metric(label="👥 Kunden Gesamt", value=f"{customers_val:,}", delta=customers_delta)
     with col3:
-        st.metric(label="🔄 Aktive Leads", value=f"{active_leads_val:,}", delta=active_delta)
+        st.metric(label="🔄 Aktive Leads Energie", value=f"{active_leads_val:,}", delta=active_delta)
     with col4:
         st.metric(label="📱 Active Users", value=f"{mau_val:,}")
 
@@ -295,7 +295,7 @@ def render_website_section(df: pd.DataFrame):
 
 def render_sales_section(df: pd.DataFrame):
     """Rendert die Sales / Lead Pipeline Sektion."""
-    st.markdown('<p class="section-header">🎯 Sales & Lead Pipeline</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">🎯 Sales & Lead Pipeline Energie</p>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
@@ -331,7 +331,7 @@ def render_sales_section(df: pd.DataFrame):
 
 def render_active_leads_section():
     """Rendert Tabellen mit aktiven und neuen Leads aus Zoho."""
-    st.markdown('<p class="section-header">📋 Aktive Leads</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">📋 Aktive Leads Energie</p>', unsafe_allow_html=True)
 
     leads_df = load_active_leads()
 

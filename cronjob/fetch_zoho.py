@@ -123,7 +123,7 @@ def fetch_zoho_all_leads(
         page = 1
         while True:
             params = {
-                "fields": "Deal_Name,Account_Name,Stage,Amount,Created_Time,Closing_Date",
+                "fields": "Deal_Name,Account_Name,Stage,Amount,Created_Time,Closing_Date,Pipeline",
                 "per_page": "200",
                 "page": str(page),
             }
@@ -137,8 +137,12 @@ def fetch_zoho_all_leads(
                 break
             page += 1
 
+        # Nur Deals der Pipeline "Energie" berücksichtigen
+        energie_deals = [d for d in all_deals if d.get("Pipeline", "") == "Energie"]
+        logger.info(f"Zoho Deals gesamt: {len(all_deals)}, davon Pipeline 'Energie': {len(energie_deals)}")
+
         result = []
-        for deal in all_deals:
+        for deal in energie_deals:
             stage = deal.get("Stage", "")
             created_str = deal.get("Created_Time", "")[:10]
             account = deal.get("Account_Name")
@@ -191,8 +195,8 @@ def fetch_zoho_data(
     try:
         if not access_token:
             access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
-        deals_total = _get_records_count(api_domain, access_token, "Deals")
-        logger.info(f"Zoho Daten: {deals_total} Deals gesamt")
+        deals_total = _get_records_count(api_domain, access_token, "Deals", criteria="(Pipeline:equals:Energie)")
+        logger.info(f"Zoho Daten: {deals_total} Deals (Pipeline Energie)")
         return {"zoho_deals_total": deals_total}, access_token
 
     except Exception as e:
