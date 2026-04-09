@@ -96,8 +96,9 @@ def run_fetch():
     logger.info("🎯 Hole Zoho CRM Daten...")
     active_leads = []
     if config.ZOHO_CLIENT_ID and config.ZOHO_CLIENT_SECRET and config.ZOHO_REFRESH_TOKEN:
+        zoho_token = None
         try:
-            zoho_data = fetch_zoho_data(
+            zoho_data, zoho_token = fetch_zoho_data(
                 config.ZOHO_CLIENT_ID,
                 config.ZOHO_CLIENT_SECRET,
                 config.ZOHO_REFRESH_TOKEN,
@@ -110,14 +111,15 @@ def run_fetch():
             logger.error(f"Zoho Fehler: {e}")
 
         try:
-            # Alle Leads mit Status für Dashboard-Tabelle (separat, damit Sheets-Fehler
-            # nicht als Zoho-Fehler geloggt werden)
+            # Alle Leads mit Status für Dashboard-Tabelle.
+            # Teile den bereits geholten Token (verhindert doppelten Token-Refresh → 429).
             active_leads = fetch_zoho_all_leads(
                 config.ZOHO_CLIENT_ID,
                 config.ZOHO_CLIENT_SECRET,
                 config.ZOHO_REFRESH_TOKEN,
                 config.ZOHO_API_DOMAIN,
                 config.ZOHO_ACCOUNTS_URL,
+                access_token=zoho_token,
             )
             # Status-Counts für tägliche Historisierung
             if active_leads:

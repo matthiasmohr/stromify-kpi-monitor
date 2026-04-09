@@ -99,12 +99,15 @@ def fetch_zoho_all_leads(
     refresh_token: str,
     api_domain: str = "https://www.zohoapis.eu",
     accounts_url: str = "https://accounts.zoho.eu",
+    access_token: str = None,
 ) -> list:
     """
     Holt ALLE Deals aus Zoho mit Status-Attribut.
     Status: "new" | "active" | "won" | "lost" | "waiting"
     "new" = aktiv + in den letzten 14 Tagen erstellt
     "active" = aktiv + älter als 14 Tage
+
+    access_token: optional vorher geholter Token (verhindert doppelten Token-Refresh)
     """
     WON_STAGES = ["Gewonnen, Freigabe erhalten", "Abgeschlossen, gewonnen", "Abgewickelt, -> OPS"]
     LOST_STAGES = ["Abgeschlossen, verloren"]
@@ -112,7 +115,8 @@ def fetch_zoho_all_leads(
     cutoff_14d = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
     try:
-        access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
+        if not access_token:
+            access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
         headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
 
         all_deals = []
@@ -175,26 +179,22 @@ def fetch_zoho_data(
     refresh_token: str,
     api_domain: str = "https://www.zohoapis.eu",
     accounts_url: str = "https://accounts.zoho.eu",
-) -> dict:
+    access_token: str = None,
+) -> tuple:
     """
     Holt Deal-Pipeline und Conversion-Daten aus Zoho CRM.
 
-    Args:
-        client_id: Zoho OAuth Client ID
-        client_secret: Zoho OAuth Client Secret
-        refresh_token: Zoho OAuth Refresh Token
-        api_domain: Zoho API Domain (EU/US)
-        accounts_url: Zoho Accounts URL (EU/US)
-
     Returns:
-        dict mit zoho_deals_new, zoho_deals_total, zoho_deals_won
+        (dict mit zoho_deals_total, access_token) – Token wird zurückgegeben
+        damit fetch_zoho_all_leads ihn wiederverwenden kann (kein doppelter Refresh).
     """
     try:
-        access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
+        if not access_token:
+            access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
         deals_total = _get_records_count(api_domain, access_token, "Deals")
         logger.info(f"Zoho Daten: {deals_total} Deals gesamt")
-        return {"zoho_deals_total": deals_total}
+        return {"zoho_deals_total": deals_total}, access_token
 
     except Exception as e:
         logger.error(f"Fehler beim Abrufen der Zoho-Daten: {e}")
-        return {"zoho_deals_total": 0}
+        return {"zoho_deals_total": 0}, None

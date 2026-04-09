@@ -130,13 +130,13 @@ def write_daily_row(data: dict):
     row = [str(v) for v in row]
 
     # Prüfe ob heute schon ein Eintrag existiert
-    all_dates = worksheet.col_values(1)  # Spalte A (date)
+    all_dates = _retry(lambda: worksheet.col_values(1))  # Spalte A (date)
     if today_str in all_dates:
         row_index = all_dates.index(today_str) + 1  # 1-basiert
-        worksheet.update(f"A{row_index}", [row], value_input_option="RAW")
+        _retry(lambda: worksheet.update(f"A{row_index}", [row], value_input_option="RAW"))
         logger.info(f"Tageseintrag für {today_str} aktualisiert (Zeile {row_index})")
     else:
-        worksheet.append_row(row, value_input_option="RAW")
+        _retry(lambda: worksheet.append_row(row, value_input_option="RAW"))
         logger.info(f"Neuer Tageseintrag für {today_str} hinzugefügt")
 
 
@@ -255,7 +255,7 @@ def update_monthly_aggregation():
 
     # Tagesdaten laden
     daily_ws = sheet.worksheet(config.SHEET_DAILY)
-    daily_data = daily_ws.get_all_records()
+    daily_data = _retry(lambda: daily_ws.get_all_records())
 
     if not daily_data:
         logger.warning("Keine Tagesdaten vorhanden für monatliche Aggregation")
@@ -333,11 +333,11 @@ def update_monthly_aggregation():
 
     monthly_row = [str(v) for v in monthly_row]
 
-    all_months = monthly_ws.col_values(1)
+    all_months = _retry(lambda: monthly_ws.col_values(1))
     if current_month in all_months:
         row_index = all_months.index(current_month) + 1
-        monthly_ws.update(f"A{row_index}", [monthly_row], value_input_option="RAW")
+        _retry(lambda: monthly_ws.update(f"A{row_index}", [monthly_row], value_input_option="RAW"))
         logger.info(f"Monatsdaten für {current_month} aktualisiert")
     else:
-        monthly_ws.append_row(monthly_row, value_input_option="RAW")
+        _retry(lambda: monthly_ws.append_row(monthly_row, value_input_option="RAW"))
         logger.info(f"Neue Monatsdaten für {current_month} hinzugefügt")
