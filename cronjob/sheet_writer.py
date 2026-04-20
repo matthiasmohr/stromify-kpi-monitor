@@ -129,12 +129,23 @@ def write_daily_row(data: dict):
     # Alle Werte als String für RAW-Modus (verhindert Locale-Probleme mit Komma/Punkt)
     row = [str(v) for v in row]
 
-    # Prüfe ob heute schon ein Eintrag existiert
-    all_dates = _retry(lambda: worksheet.col_values(1))  # Spalte A (date)
-    if today_str in all_dates:
-        row_index = all_dates.index(today_str) + 1  # 1-basiert
-        _retry(lambda: worksheet.update(f"A{row_index}", [row], value_input_option="RAW"))
-        logger.info(f"Tageseintrag für {today_str} aktualisiert (Zeile {row_index})")
+    # Prüfe ob heute schon ein Eintrag existiert (Spalte A = date)
+    all_dates = _retry(lambda: worksheet.col_values(1))
+    # Alle Zeilen mit heutigem Datum finden (1-basiert, Header in Zeile 1)
+    matching_rows = [i + 1 for i, d in enumerate(all_dates) if d.strip() == today_str]
+
+    if matching_rows:
+        # Erste Zeile mit aktuellen Daten überschreiben
+        keep_row = matching_rows[0]
+        _retry(lambda: worksheet.update(f"A{keep_row}", [row], value_input_option="RAW"))
+        logger.info(f"Tageseintrag für {today_str} aktualisiert (Zeile {keep_row})")
+
+        # Duplikate entfernen (von unten nach oben, damit Indizes stabil bleiben)
+        duplicates = matching_rows[1:]
+        if duplicates:
+            for dup_row in sorted(duplicates, reverse=True):
+                _retry(lambda r=dup_row: worksheet.delete_rows(r))
+            logger.info(f"{len(duplicates)} Duplikat(e) für {today_str} entfernt")
     else:
         _retry(lambda: worksheet.append_row(row, value_input_option="RAW"))
         logger.info(f"Neuer Tageseintrag für {today_str} hinzugefügt")
@@ -334,10 +345,18 @@ def update_monthly_aggregation():
     monthly_row = [str(v) for v in monthly_row]
 
     all_months = _retry(lambda: monthly_ws.col_values(1))
-    if current_month in all_months:
-        row_index = all_months.index(current_month) + 1
-        _retry(lambda: monthly_ws.update(f"A{row_index}", [monthly_row], value_input_option="RAW"))
-        logger.info(f"Monatsdaten für {current_month} aktualisiert")
+    matching_rows = [i + 1 for i, m in enumerate(all_months) if m.strip() == current_month]
+
+    if matching_rows:
+        keep_row = matching_rows[0]
+        _retry(lambda: monthly_ws.update(f"A{keep_row}", [monthly_row], value_input_option="RAW"))
+        logger.info(f"Monatsdaten für {current_month} aktualisiert (Zeile {keep_row})")
+
+        duplicates = matching_rows[1:]
+        if duplicates:
+            for dup_row in sorted(duplicates, reverse=True):
+                _retry(lambda r=dup_row: monthly_ws.delete_rows(r))
+            logger.info(f"{len(duplicates)} Monats-Duplikat(e) für {current_month} entfernt")
     else:
         _retry(lambda: monthly_ws.append_row(monthly_row, value_input_option="RAW"))
         logger.info(f"Neue Monatsdaten für {current_month} hinzugefügt")
