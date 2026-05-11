@@ -64,20 +64,13 @@ def _query_all(api_key: str, data_source_id: str) -> list:
     return all_results
 
 
-def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> dict:
+def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "", provisionen_db_id: str = "") -> dict:
     """
-    Holt Kundenzahl und Yearly Consumption GWh aus Notion.
+    Holt Kundenzahl, GWh und Provision aus Notion.
 
     - Kunden-DB: Einträge zählen = Kunden gesamt
     - Malos-DB: "JVP (kWh)" summieren und in GWh umrechnen
-
-    Args:
-        api_key: Notion Integration API Key
-        database_id: ID der Kunden-Datenbank
-        malos_db_id: ID der Malos-Datenbank
-
-    Returns:
-        dict mit notion_customers_total, notion_yearly_consumption_gwh
+    - Provisionen-DB: "Provisionsbetrag" summieren
     """
     try:
         # --- Kunden zählen ---
@@ -97,7 +90,6 @@ def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> 
 
             malos = _query_all(api_key, malos_ds_id)
             total_kwh = 0.0
-            total_provision = 0.0
             for page in malos:
                 props = page.get("properties", {})
                 kwh_prop = props.get("JVP (kWh)", {})
@@ -105,14 +97,23 @@ def fetch_notion_data(api_key: str, database_id: str, malos_db_id: str = "") -> 
                     val = kwh_prop.get("number")
                     if val and val > 0:
                         total_kwh += val
-                # "Provision Gesamt" ist ein Formula-Feld
-                prov_prop = props.get("Provision Gesamt", {})
-                if prov_prop.get("type") == "formula":
-                    formula_val = prov_prop.get("formula", {})
-                    val = formula_val.get("number")
+            total_gwh = round(total_kwh / 1_000_000, 2)
+
+        # --- Provision aus Provisionen-DB ---
+        total_provision = 0.0
+        if provisionen_db_id:
+            prov_ds_id = _get_first_data_source_id(api_key, provisionen_db_id)
+            if not prov_ds_id:
+                raise ValueError(f"Keine Data Source in Provisionen-DB {provisionen_db_id}")
+
+            provisionen = _query_all(api_key, prov_ds_id)
+            for page in provisionen:
+                props = page.get("properties", {})
+                pb_prop = props.get("Provisionsbetrag", {})
+                if pb_prop.get("type") == "number":
+                    val = pb_prop.get("number")
                     if val and val > 0:
                         total_provision += val
-            total_gwh = round(total_kwh / 1_000_000, 2)
             total_provision = round(total_provision, 2)
 
         logger.info(f"Notion Daten: {customers_total} Kunden, {total_gwh} GWh, {total_provision} EUR Provision")
