@@ -84,6 +84,7 @@ def run_fetch():
                 config.NOTION_API_KEY,
                 config.NOTION_CUSTOMERS_DB_ID,
                 config.NOTION_MALOS_DB_ID,
+                config.NOTION_PROVISIONEN_DB_ID,
             )
             all_data.update(notion_data)
         except Exception as e:
