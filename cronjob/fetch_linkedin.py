@@ -96,10 +96,6 @@ def fetch_linkedin_data(
             impressions += stats.get("impressionCount", 0)
             views += stats.get("clickCount", 0) + stats.get("engagement", 0)
 
-            page_stats = element.get("pageStatistics", {})
-            page_views = page_stats.get("views", {})
-            views += page_views.get("allPageViews", {}).get("pageViews", 0)
-
         logger.info(f"LinkedIn Daten: {impressions} Impressions, {views} Views")
 
         return {

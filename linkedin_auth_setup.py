@@ -23,8 +23,6 @@ REDIRECT_URI = "http://localhost:8765/callback"
 
 SCOPES = [
     "r_organization_social",   # Impressions, Shares, Engagement
-    "r_organization_admin",    # Page Views
-    "rw_organization_admin",   # (Community App benötigt dies oft)
 ]
 
 AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
