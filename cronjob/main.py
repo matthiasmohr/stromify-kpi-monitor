@@ -142,14 +142,15 @@ def run_fetch():
 
     # 4. LinkedIn
     logger.info("💼 Hole LinkedIn Daten...")
-    if (
-        config.LINKEDIN_ACCESS_TOKEN
-        and config.LINKEDIN_ORG_ID
-        and config.LINKEDIN_ACCESS_TOKEN != "your_access_token"
-        and config.LINKEDIN_ORG_ID != "your_organization_id"
-    ):
+    if config.LINKEDIN_CLIENT_ID and config.LINKEDIN_CLIENT_SECRET and config.LINKEDIN_ORG_ID:
         try:
-            li_data = fetch_linkedin_data(config.LINKEDIN_ACCESS_TOKEN, config.LINKEDIN_ORG_ID)
+            li_data = fetch_linkedin_data(
+                config.LINKEDIN_ACCESS_TOKEN,
+                config.LINKEDIN_ORG_ID,
+                client_id=config.LINKEDIN_CLIENT_ID,
+                client_secret=config.LINKEDIN_CLIENT_SECRET,
+                refresh_token=config.LINKEDIN_REFRESH_TOKEN,
+            )
             all_data.update(li_data)
         except Exception as e:
             errors.append(f"LinkedIn: {e}")
