@@ -143,33 +143,35 @@ def main():
         print(f"LINKEDIN_REFRESH_TOKEN={refresh_token}")
     print()
 
-    # Org ID aus der API ermitteln
-    print("Ermittle deine Organisation ID...")
-    try:
-        resp = requests.get(
-            "https://api.linkedin.com/v2/organizationAcls",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "X-Restli-Protocol-Version": "2.0.0",
-            },
-            params={"q": "roleAssignee"},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        elements = data.get("elements", [])
-        if elements:
-            print("Gefundene Organisationen:")
-            for el in elements:
-                org_urn = el.get("organization", "")
-                org_id = org_urn.split(":")[-1] if org_urn else "?"
-                role = el.get("role", "")
-                print(f"  - ID: {org_id}  (Role: {role})  → LINKEDIN_ORG_ID={org_id}")
-        else:
-            print("Keine Organisationen gefunden. Pruefe die App-Scopes.")
-    except Exception as e:
-        print(f"Konnte Org ID nicht automatisch ermitteln: {e}")
-        print("Setze LINKEDIN_ORG_ID manuell (numerische ID aus der LinkedIn URL).")
+    # Org ID per Vanity Name ermitteln
+    vanity_name = input("Wie lautet der URL-Slug eurer LinkedIn-Seite? (z.B. 'stromify' aus linkedin.com/company/stromify/): ").strip()
+    if vanity_name:
+        print(f"Suche Organisation '{vanity_name}'...")
+        try:
+            resp = requests.get(
+                "https://api.linkedin.com/v2/organizations",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                },
+                params={"q": "vanityName", "vanityName": vanity_name},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            elements = data.get("elements", [])
+            if elements:
+                org = elements[0]
+                org_id = org.get("id", "")
+                org_name = org.get("localizedName", "")
+                print(f"Gefunden: {org_name} → LINKEDIN_ORG_ID={org_id}")
+                print()
+                print(f"LINKEDIN_ORG_ID={org_id}")
+            else:
+                print("Organisation nicht gefunden. Setze LINKEDIN_ORG_ID manuell.")
+        except Exception as e:
+            print(f"Fehler: {e}")
+            print("Setze LINKEDIN_ORG_ID manuell.")
 
 
 if __name__ == "__main__":
