@@ -107,15 +107,22 @@ Anschließend alle Umgebungsvariablen aus `.env.example` in den Railway Environm
 
 ### Cronjob als separater Railway-Service
 
-Der KPI-Fetch läuft **nicht** mehr im Streamlit-Prozess (App-Restarts/Idle haben Runs verschluckt). Stattdessen einen zweiten Service im selben Railway-Projekt anlegen:
+Der KPI-Fetch läuft **nicht** mehr im Streamlit-Prozess (App-Restarts/Idle haben Runs verschluckt). Stattdessen läuft er als zweiter Service (`kpi-batch-report`) im selben Railway-Projekt mit eigener Config-Datei `railway.cron.toml`:
 
-1. Im Railway-Projekt → **New Service** → **GitHub Repo** (gleiches Repo wählen).
-2. **Settings → Deploy → Start Command:** `python -m cronjob.main`
-3. **Settings → Cron Schedule:** `0 21 * * *` (täglich 21:00 UTC = 23:00 MESZ / 22:00 MEZ)
-4. Healthcheck deaktivieren (Cron-Jobs sind Einmal-Runs, kein HTTP).
-5. Alle Env-Vars aus dem Web-Service in den Cron-Service übernehmen (Variables → Shared Variables empfehlenswert).
+```toml
+[deploy]
+startCommand = "python -m cronjob.main"
+cronSchedule = "0 21 * * *"   # täglich 21:00 UTC = 23:00 MESZ / 22:00 MEZ
+restartPolicyType = "never"
+```
 
-Logs pro Run sind im Railway-Dashboard unter dem Cron-Service einsehbar.
+Setup im Railway-Dashboard:
+
+1. Service `kpi-batch-report` → **Settings → Config-as-Code → Config Path:** `railway.cron.toml` setzen.
+2. **Settings → Networking:** Public Networking deaktivieren (kein HTTP nötig).
+3. **Settings → Healthcheck:** leeren.
+4. Alle Env-Vars vom Web-Service übernehmen (Project → **Shared Variables** ist der bequemste Weg).
+5. Deploy triggern. Logs pro Run sind im Service-Dashboard einsehbar (`KPI-Fetch gestartet: …` markiert den Start).
 
 ## Umgebungsvariablen
 
