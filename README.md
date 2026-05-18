@@ -87,14 +87,10 @@ Der Cronjob sammelt Daten aus allen Quellen und schreibt sie ins Google Sheet.
 python -m cronjob.main
 
 # für historische Nachbeladung
-python3 -m cronjob.main --backfill 30
-
-# Als dauerhafter Prozess (täglich um 22:00)
-python -m cronjob.main --schedule
-
-# Mit benutzerdefiniertem Intervall (alle 60 Minuten)
-python -m cronjob.main --interval 60
+python -m cronjob.main --backfill 30
 ```
+
+In Produktion wird der Cronjob als separater Railway-Service mit Cron Schedule ausgeführt (siehe [Deployment](#deployment-railway)).
 
 ## Deployment (Railway)
 
@@ -108,6 +104,18 @@ railway up
 ```
 
 Anschließend alle Umgebungsvariablen aus `.env.example` in den Railway Environment Variables setzen.
+
+### Cronjob als separater Railway-Service
+
+Der KPI-Fetch läuft **nicht** mehr im Streamlit-Prozess (App-Restarts/Idle haben Runs verschluckt). Stattdessen einen zweiten Service im selben Railway-Projekt anlegen:
+
+1. Im Railway-Projekt → **New Service** → **GitHub Repo** (gleiches Repo wählen).
+2. **Settings → Deploy → Start Command:** `python -m cronjob.main`
+3. **Settings → Cron Schedule:** `0 21 * * *` (täglich 21:00 UTC = 23:00 MESZ / 22:00 MEZ)
+4. Healthcheck deaktivieren (Cron-Jobs sind Einmal-Runs, kein HTTP).
+5. Alle Env-Vars aus dem Web-Service in den Cron-Service übernehmen (Variables → Shared Variables empfehlenswert).
+
+Logs pro Run sind im Railway-Dashboard unter dem Cron-Service einsehbar.
 
 ## Umgebungsvariablen
 

@@ -3,14 +3,11 @@ Stromify KPI Cronjob - Orchestrator
 Ruft alle Datenquellen ab und schreibt die KPIs in Google Sheets.
 
 Verwendung:
-    # Einmalig ausführen:
+    # Einmalig ausführen (Standard – wird so von Railway Cron Schedule aufgerufen):
     python -m cronjob.main
 
-    # Als Cronjob (z.B. täglich um 22:00):
-    0 22 * * * cd /path/to/stromify-kpi-monitor && python -m cronjob.main
-
-    # Oder als dauerhafter Prozess mit Schedule:
-    python -m cronjob.main --schedule
+    # GA4-Historie nachfüllen:
+    python -m cronjob.main --backfill 90
 """
 import sys
 import json
@@ -240,17 +237,6 @@ def run_backfill(days: int = 90):
 def main():
     parser = argparse.ArgumentParser(description="Stromify KPI Cronjob")
     parser.add_argument(
-        "--schedule",
-        action="store_true",
-        help="Als dauerhafter Prozess mit Schedule ausführen (täglich um 22:00)",
-    )
-    parser.add_argument(
-        "--interval",
-        type=int,
-        default=None,
-        help="Intervall in Minuten für wiederkehrende Ausführung",
-    )
-    parser.add_argument(
         "--backfill",
         type=int,
         metavar="DAYS",
@@ -261,26 +247,7 @@ def main():
 
     if args.backfill:
         run_backfill(days=args.backfill)
-    elif args.schedule or args.interval:
-        import schedule
-        import time
-
-        if args.interval:
-            schedule.every(args.interval).minutes.do(run_fetch)
-            logger.info(f"Scheduled: Alle {args.interval} Minuten")
-        else:
-            schedule.every().day.at("22:00").do(run_fetch)
-            logger.info("Scheduled: Täglich um 22:00 Uhr")
-
-        # Direkt einmal ausführen
-        run_fetch()
-
-        # Dann im Loop warten
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
     else:
-        # Einmalige Ausführung
         run_fetch()
 
 
