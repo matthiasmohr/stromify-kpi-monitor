@@ -122,8 +122,6 @@ def write_daily_row(data: dict):
         data.get("zoho_deals_lost", 0),
         data.get("zoho_deals_waiting", 0),
         data.get("auth0_mau", 0),
-        data.get("li_impressions", 0),
-        data.get("li_views", 0),
     ]
 
     # Alle Werte als String für RAW-Modus (verhindert Locale-Probleme mit Komma/Punkt)
@@ -186,8 +184,6 @@ def backfill_ga_rows(ga_history: dict):
             0,    # zoho_deals_won
             0,    # zoho_deals_lost
             0,    # zoho_deals_waiting
-            0,    # li_impressions
-            0,    # li_views
         ]
         new_rows.append([str(v) for v in row])
 
@@ -334,8 +330,6 @@ def update_monthly_aggregation():
         zoho_status_ends["zoho_deals_lost"],
         zoho_status_ends["zoho_deals_waiting"],
         int(month_df["auth0_mau"].max()) if "auth0_mau" in month_df.columns else 0,
-        int(month_df["li_impressions"].sum()),
-        int(month_df["li_views"].sum()),
     ]
 
     # Monthly Sheet aktualisieren

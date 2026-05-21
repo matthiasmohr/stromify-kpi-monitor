@@ -1,14 +1,13 @@
 # ⚡ Stromify KPI Monitor
 
-Zentrales Dashboard zur Visualisierung der wichtigsten Unternehmens-KPIs. Aggregiert Daten aus Google Analytics, Notion, Zoho CRM und LinkedIn in einem Streamlit-Frontend.
+Zentrales Dashboard zur Visualisierung der wichtigsten Unternehmens-KPIs. Aggregiert Daten aus Google Analytics, Notion und Zoho CRM in einem Streamlit-Frontend.
 
 ## Architektur
 
 ```
 Google Analytics ─┐
-Notion ───────────┤
-Zoho CRM ─────────┤──▶ Python Cronjob ──▶ Google Sheet ──▶ Streamlit Dashboard
-LinkedIn ─────────┘       (scheduled)        (Datenhaltung)     (Frontend)
+Notion ───────────┤──▶ Python Cronjob ──▶ Google Sheet ──▶ Streamlit Dashboard
+Zoho CRM ─────────┘       (scheduled)        (Datenhaltung)     (Frontend)
 ```
 
 ## KPIs
@@ -18,7 +17,6 @@ LinkedIn ─────────┘       (scheduled)        (Datenhaltung) 
 | Google Analytics | Website-Besucher, Sessions, Absprungrate |
 | Notion | Kunden Gesamt, Yearly Consumption (GWh) |
 | Zoho CRM | Neue Deals, Deals Gesamt, Deals gewonnen |
-| LinkedIn | Impressions, Views |
 
 ## Projektstruktur
 
@@ -38,8 +36,7 @@ stromify-kpi-monitor/
 │   ├── sheet_writer.py       # Google Sheets Schreiblogik
 │   ├── fetch_ga.py           # Google Analytics Data API v4
 │   ├── fetch_notion.py       # Notion API
-│   ├── fetch_zoho.py         # Zoho CRM API
-│   └── fetch_linkedin.py     # LinkedIn API
+│   └── fetch_zoho.py         # Zoho CRM API
 └── .env.example              # Vorlage für Umgebungsvariablen
 ```
 
@@ -64,8 +61,8 @@ cp .env.example .env
 
 Erstelle ein Google Sheet mit drei Blättern:
 
-- **`kpi_daily`** – Tagesaktuelle KPI-Werte (Spalten: `date`, `ga_visitors`, `ga_sessions`, `ga_bounce_rate`, `notion_customers_total`, `notion_yearly_consumption_gwh`, `zoho_deals_new`, `zoho_deals_total`, `zoho_deals_won`, `li_impressions`, `li_views`)
-- **`kpi_monthly`** – Monatliche Aggregation (Spalten: `month`, `ga_visitors_sum`, `ga_visitors_avg`, `notion_customers_end`, `notion_customers_new`, `notion_yearly_consumption_gwh`, `zoho_deals_sum`, `zoho_deals_won_sum`, `li_impressions_sum`, `li_views_sum`)
+- **`kpi_daily`** – Tagesaktuelle KPI-Werte (Spalten: `date`, `ga_visitors`, `ga_sessions`, `ga_bounce_rate`, `notion_customers_total`, `notion_yearly_consumption_gwh`, `zoho_deals_new`, `zoho_deals_total`, `zoho_deals_won`)
+- **`kpi_monthly`** – Monatliche Aggregation (Spalten: `month`, `ga_visitors_sum`, `ga_visitors_avg`, `notion_customers_end`, `notion_customers_new`, `notion_yearly_consumption_gwh`, `zoho_deals_sum`, `zoho_deals_won_sum`)
 - **`kpi_targets`** – Zielwerte für Soll/Ist-Vergleich (Spalten: `kpi`, `target_monthly`, `unit`, `category`)
 
 Teile das Sheet mit der E-Mail des Google Service Accounts.
@@ -138,12 +135,10 @@ Setup im Railway-Dashboard:
 | `ZOHO_REFRESH_TOKEN` | Zoho OAuth Refresh Token |
 | `ZOHO_API_DOMAIN` | Zoho API Domain (Default: `https://www.zohoapis.eu`) |
 | `ZOHO_ACCOUNTS_URL` | Zoho Accounts URL (Default: `https://accounts.zoho.eu`) |
-| `LINKEDIN_ACCESS_TOKEN` | LinkedIn OAuth2 Access Token |
-| `LINKEDIN_ORG_ID` | LinkedIn Organization ID |
 
 ## Tech Stack
 
 - **Frontend:** Streamlit + Plotly
 - **Datenhaltung:** Google Sheets (via gspread)
-- **APIs:** Google Analytics Data API v4, Notion API, Zoho CRM API v5, LinkedIn Marketing API v2
+- **APIs:** Google Analytics Data API v4, Notion API, Zoho CRM API v5
 - **Deployment:** Railway

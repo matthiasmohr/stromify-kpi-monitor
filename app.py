@@ -188,14 +188,10 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
 
     # Kumulative KPIs: Summe über Zeitraum
     ga_val = int(period_df["ga_visitors"].sum())
-    li_val = int(period_df["li_impressions"].sum())
 
     # Deltas
     ga_prev = int(prev_df["ga_visitors"].sum()) if not prev_df.empty else 0
     ga_delta = f"{((ga_val - ga_prev) / ga_prev * 100):+.1f}%" if ga_prev > 0 else None
-
-    li_prev = int(prev_df["li_impressions"].sum()) if not prev_df.empty else 0
-    li_delta = f"{((li_val - li_prev) / li_prev * 100):+.1f}%" if li_prev > 0 else None
 
     customers_prev_df = df[df["notion_customers_total"] > 0].iloc[:-1] if len(customers_df) > 1 else pd.DataFrame()
     customers_prev = int(customers_prev_df["notion_customers_total"].iloc[-1]) if not customers_prev_df.empty else 0
@@ -341,18 +337,11 @@ def render_active_leads_section():
             st.caption("Keine weiteren aktiven Leads.")
 
 
-def render_linkedin_energy_section(df: pd.DataFrame):
-    """Rendert LinkedIn Performance & Energy nebeneinander."""
-    st.markdown('<p class="section-header">💼 LinkedIn Performance &nbsp;&nbsp;&nbsp; ⚡ Energy</p>', unsafe_allow_html=True)
-    col_li1, col_li2, col_energy = st.columns(3)
-    with col_li1:
-        fig = charts.line_chart(
-            df, x="date", y=["li_impressions"],
-            labels={"li_impressions": "Impressions"},
-            title="LinkedIn Impressions",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    with col_li2:
+def render_users_energy_section(df: pd.DataFrame):
+    """Rendert Active Users & Energy nebeneinander."""
+    st.markdown('<p class="section-header">📱 Active Users &nbsp;&nbsp;&nbsp; ⚡ Energy</p>', unsafe_allow_html=True)
+    col_users, col_energy = st.columns(2)
+    with col_users:
         fig = charts.area_chart(
             df, x="date", y="auth0_mau",
             title="Active Users (MAU)",
@@ -390,7 +379,7 @@ def page_dashboard():
     render_website_section(filtered_df)
     render_sales_section(filtered_df)
     render_active_leads_section()
-    render_linkedin_energy_section(filtered_df)
+    render_users_energy_section(filtered_df)
 
     # Footer
     st.markdown("---")
@@ -454,7 +443,7 @@ def render_yearly_targets(daily_df: pd.DataFrame, targets_df: pd.DataFrame):
         },
         {
             "label": "🌐 Social & Traffic",
-            "kpis": ["ga_visitors", "li_impressions", "li_views"],
+            "kpis": ["ga_visitors"],
         },
     ]
 
@@ -532,8 +521,6 @@ def render_monthly_breakdown(daily_df: pd.DataFrame, monthly_df: pd.DataFrame, t
         "notion_customers_total": "notion_customers_end",
         "notion_yearly_consumption_gwh": "notion_yearly_consumption_gwh",
         "zoho_deals_total": "zoho_deals_total_end",
-        "li_impressions": "li_impressions_sum",
-        "li_views": "li_views_sum",
     }
 
     monthly_col = monthly_col_map.get(selected_kpi, selected_kpi)

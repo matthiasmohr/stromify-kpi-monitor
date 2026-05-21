@@ -31,7 +31,6 @@ import config
 from cronjob.fetch_ga import fetch_ga_data, fetch_ga_historical
 from cronjob.fetch_notion import fetch_notion_data
 from cronjob.fetch_zoho import fetch_zoho_data, fetch_zoho_all_leads
-from cronjob.fetch_linkedin import fetch_linkedin_data
 from cronjob.fetch_auth0 import fetch_auth0_data
 from cronjob.sheet_writer import write_daily_row, update_monthly_aggregation, backfill_ga_rows, write_active_leads
 
@@ -137,25 +136,7 @@ def run_fetch():
     else:
         logger.warning("Zoho nicht konfiguriert (ZOHO_CLIENT_ID, SECRET oder REFRESH_TOKEN fehlt)")
 
-    # 4. LinkedIn
-    logger.info("💼 Hole LinkedIn Daten...")
-    if config.LINKEDIN_CLIENT_ID and config.LINKEDIN_CLIENT_SECRET and config.LINKEDIN_ORG_ID:
-        try:
-            li_data = fetch_linkedin_data(
-                config.LINKEDIN_ACCESS_TOKEN,
-                config.LINKEDIN_ORG_ID,
-                client_id=config.LINKEDIN_CLIENT_ID,
-                client_secret=config.LINKEDIN_CLIENT_SECRET,
-                refresh_token=config.LINKEDIN_REFRESH_TOKEN,
-            )
-            all_data.update(li_data)
-        except Exception as e:
-            errors.append(f"LinkedIn: {e}")
-            logger.error(f"LinkedIn Fehler: {e}")
-    else:
-        logger.warning("LinkedIn nicht konfiguriert – übersprungen")
-
-    # 5. Auth0
+    # 4. Auth0
     logger.info("📱 Hole Auth0 Daten...")
     if config.AUTH0_DOMAIN and config.AUTH0_CLIENT_ID and config.AUTH0_CLIENT_SECRET:
         try:
@@ -171,7 +152,7 @@ def run_fetch():
     else:
         logger.warning("Auth0 nicht konfiguriert – übersprungen")
 
-    # 6. In Google Sheets schreiben
+    # 5. In Google Sheets schreiben
     logger.info("📝 Schreibe Daten in Google Sheets...")
     if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
         # 5a. KPI-Tagesdaten

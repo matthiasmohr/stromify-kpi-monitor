@@ -31,13 +31,6 @@ ZOHO_REFRESH_TOKEN = os.getenv("ZOHO_REFRESH_TOKEN", "")
 ZOHO_API_DOMAIN = os.getenv("ZOHO_API_DOMAIN", "https://www.zohoapis.eu")
 ZOHO_ACCOUNTS_URL = os.getenv("ZOHO_ACCOUNTS_URL", "https://accounts.zoho.eu")
 
-# --- LinkedIn ---
-LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "")
-LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "")
-LINKEDIN_ACCESS_TOKEN = os.getenv("LINKEDIN_ACCESS_TOKEN", "")
-LINKEDIN_REFRESH_TOKEN = os.getenv("LINKEDIN_REFRESH_TOKEN", "")
-LINKEDIN_ORG_ID = os.getenv("LINKEDIN_ORG_ID", "")
-
 # --- Auth0 ---
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID", "")
@@ -63,8 +56,6 @@ DAILY_COLUMNS = [
     "zoho_deals_lost",
     "zoho_deals_waiting",
     "auth0_mau",
-    "li_impressions",
-    "li_views",
 ]
 
 MONTHLY_COLUMNS = [
@@ -83,8 +74,6 @@ MONTHLY_COLUMNS = [
     "zoho_deals_lost_end",
     "zoho_deals_waiting_end",
     "auth0_mau_end",
-    "li_impressions_sum",
-    "li_views_sum",
 ]
 
 TARGET_COLUMNS = ["kpi", "target_yearly", "unit", "category"]
@@ -105,8 +94,6 @@ KPI_DISPLAY = {
     "zoho_deals_waiting": {"label": "Warteschleife", "icon": "⏳", "format": "{:,.0f}", "category": "Sales"},
     "zoho_deals_active": {"label": "Leads aktiv", "icon": "🔄", "format": "{:,.0f}", "category": "Sales"},
     "auth0_mau": {"label": "Active Users", "icon": "📱", "format": "{:,.0f}", "category": "Product"},
-    "li_impressions": {"label": "LinkedIn Impressions", "icon": "👁️", "format": "{:,.0f}", "category": "Social"},
-    "li_views": {"label": "LinkedIn Views", "icon": "📺", "format": "{:,.0f}", "category": "Social"},
 }
 
 # --- Streamlit Cache TTL (Sekunden) ---

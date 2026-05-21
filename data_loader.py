@@ -97,8 +97,6 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
         deals_new = int(random.uniform(2, 15) * weekend_factor)
         deals_total = 30 + (i // 3)
         deals_won = int(random.uniform(0, 4))
-        impressions = int(random.uniform(800, 2500) * growth)
-        views = int(impressions * random.uniform(0.1, 0.2))
 
         rows.append({
             "date": date,
@@ -113,8 +111,6 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
             "zoho_deals_new": deals_new,
             "zoho_deals_total": deals_total,
             "zoho_deals_won": deals_won,
-            "li_impressions": impressions,
-            "li_views": views,
         })
 
     return pd.DataFrame(rows)
@@ -133,8 +129,6 @@ def _generate_dummy_monthly_data() -> pd.DataFrame:
         notion_yearly_consumption_gwh=("notion_yearly_consumption_gwh", "last"),
         zoho_deals_sum=("zoho_deals_new", "sum"),
         zoho_deals_won_sum=("zoho_deals_won", "sum"),
-        li_impressions_sum=("li_impressions", "sum"),
-        li_views_sum=("li_views", "sum"),
     ).reset_index()
 
     monthly["ga_visitors_avg"] = monthly["ga_visitors_avg"].round(0).astype(int)
@@ -149,8 +143,6 @@ def _generate_dummy_targets() -> pd.DataFrame:
         {"kpi": "notion_customers_total", "target_yearly": 100, "unit": "Kunden", "category": "Sales"},
         {"kpi": "notion_yearly_consumption_gwh", "target_yearly": 10.0, "unit": "GWh", "category": "Energy"},
         {"kpi": "zoho_deals_new", "target_yearly": 500, "unit": "Leads", "category": "Sales"},
-        {"kpi": "li_impressions", "target_yearly": 600000, "unit": "Impressions", "category": "Social"},
-        {"kpi": "li_views", "target_yearly": 100000, "unit": "Views", "category": "Social"},
     ])
 
 
