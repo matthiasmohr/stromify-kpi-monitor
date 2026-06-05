@@ -93,6 +93,22 @@ def _get_records(api_domain: str, access_token: str, module: str, criteria: str 
     return all_records
 
 
+# Stage-Klassifizierung pro Pipeline.
+# Alles, was nicht in einer dieser Listen steht, gilt als "new" (≤14 Tage) bzw. "active".
+PIPELINE_STAGES = {
+    "Energie": {
+        "won": ["Gewonnen, Freigabe erhalten", "Abgeschlossen, gewonnen", "Abgewickelt, -> OPS"],
+        "lost": ["Abgeschlossen, verloren"],
+        "waiting": ["Warteschleife"],
+    },
+    "Lizenzen": {
+        "won": ["mündliche Zusage", "Abgeschlossen, gewonnen", "Abgewickelt, -> OPS"],
+        "lost": ["Abgeschlossen, verloren"],
+        "waiting": ["Warteschleife"],
+    },
+}
+
+
 def fetch_zoho_all_leads(
     client_id: str,
     client_secret: str,
@@ -100,18 +116,22 @@ def fetch_zoho_all_leads(
     api_domain: str = "https://www.zohoapis.eu",
     accounts_url: str = "https://accounts.zoho.eu",
     access_token: str = None,
+    pipeline: str = "Energie",
 ) -> list:
     """
-    Holt ALLE Deals aus Zoho mit Status-Attribut.
+    Holt ALLE Deals einer Pipeline aus Zoho mit Status-Attribut.
     Status: "new" | "active" | "won" | "lost" | "waiting"
     "new" = aktiv + in den letzten 14 Tagen erstellt
     "active" = aktiv + älter als 14 Tage
 
+    pipeline: Name der Zoho-Pipeline (z.B. "Energie" oder "Lizenzen").
+              Die Stage-Zuordnung kommt aus PIPELINE_STAGES.
     access_token: optional vorher geholter Token (verhindert doppelten Token-Refresh)
     """
-    WON_STAGES = ["Gewonnen, Freigabe erhalten", "Abgeschlossen, gewonnen", "Abgewickelt, -> OPS"]
-    LOST_STAGES = ["Abgeschlossen, verloren"]
-    WAITING_STAGES = ["Warteschleife"]
+    stage_map = PIPELINE_STAGES.get(pipeline, PIPELINE_STAGES["Energie"])
+    WON_STAGES = stage_map["won"]
+    LOST_STAGES = stage_map["lost"]
+    WAITING_STAGES = stage_map["waiting"]
     cutoff_14d = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 
     try:
@@ -137,12 +157,12 @@ def fetch_zoho_all_leads(
                 break
             page += 1
 
-        # Nur Deals der Pipeline "Energie" berücksichtigen
-        energie_deals = [d for d in all_deals if d.get("Pipeline", "") == "Energie"]
-        logger.info(f"Zoho Deals gesamt: {len(all_deals)}, davon Pipeline 'Energie': {len(energie_deals)}")
+        # Nur Deals der gewählten Pipeline berücksichtigen
+        pipeline_deals = [d for d in all_deals if d.get("Pipeline", "") == pipeline]
+        logger.info(f"Zoho Deals gesamt: {len(all_deals)}, davon Pipeline '{pipeline}': {len(pipeline_deals)}")
 
         result = []
-        for deal in energie_deals:
+        for deal in pipeline_deals:
             stage = deal.get("Stage", "")
             created_str = deal.get("Created_Time", "")[:10]
             account = deal.get("Account_Name")

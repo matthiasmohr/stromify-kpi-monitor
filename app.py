@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 import config
-from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, load_active_leads, is_using_dummy_data
+from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, load_active_leads, load_active_leads_lizenzen, is_using_dummy_data
 import charts
 
 logger = logging.getLogger(__name__)
@@ -131,14 +131,21 @@ def render_header_nav(active: str):
 
 def render_filters(daily_df: pd.DataFrame) -> int:
     """Rendert Zeitraum-Filter und Meta-Info inline."""
+    # Gesamte Aufzeichnungsdauer als Default-Zeitraum
+    if not daily_df.empty:
+        total_days = (daily_df["date"].max() - daily_df["date"].min()).days + 1
+    else:
+        total_days = 0
+
     col1, col2, col3, _ = st.columns([1, 1, 1, 4])
     with col1:
+        options = ["Gesamt", "7 Tage", "14 Tage", "30 Tage", "90 Tage"]
         time_range = st.selectbox(
             "📅 Zeitraum",
-            options=["7 Tage", "14 Tage", "30 Tage", "90 Tage"],
-            index=2,
+            options=options,
+            index=0,
         )
-        days = int(time_range.split()[0])
+        days = total_days if time_range == "Gesamt" else int(time_range.split()[0])
     with col2:
         if not daily_df.empty:
             last_date = daily_df["date"].max()
@@ -296,6 +303,51 @@ def render_sales_section(df: pd.DataFrame):
         st.plotly_chart(fig, use_container_width=True)
 
 
+def render_sales_section_lizenzen():
+    """Rendert den Funnel der Lead-Pipeline Lizenzen."""
+    st.markdown('<p class="section-header">🎯 Sales & Lead Pipeline Lizenzen</p>', unsafe_allow_html=True)
+
+    leads_df = load_active_leads_lizenzen()
+
+    if leads_df.empty or "status" not in leads_df.columns:
+        st.info("Keine Lizenzen-Lead-Daten verfügbar. Cronjob noch nicht gelaufen.")
+        return
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        counts = leads_df["status"].value_counts()
+        total = len(leads_df)
+        won = int(counts.get("won", 0))
+        lost = int(counts.get("lost", 0))
+        waiting = int(counts.get("waiting", 0))
+        active_new = int(counts.get("new", 0))
+        active_old = int(counts.get("active", 0))
+
+        stages = ["Gesamt", "Aktiv", "Aktiv (Neu)", "Warteschleife", "Gewonnen", "Verloren"]
+        values = [total, active_old, active_new, waiting, won, lost]
+        fig = charts.funnel_chart(stages, values, title="Lead Pipeline Lizenzen (aktuell)")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        col_labels = {
+            "name": "Name",
+            "company": "Unternehmen",
+            "stage": "Stage",
+            "amount": "Betrag (€)",
+            "created_date": "Erstellt",
+            "closing_date": "Abschluss",
+        }
+        display_cols = [c for c in ["name", "company", "stage", "amount", "created_date", "closing_date"]
+                        if c in leads_df.columns]
+        # Aktive Leads (new + active) zuerst, danach der Rest
+        active_mask = leads_df["status"].isin(["new", "active"])
+        table_df = pd.concat([leads_df[active_mask], leads_df[~active_mask]])[display_cols]
+
+        st.markdown(f"**📋 Alle Leads im Detail** – {len(table_df)} Leads")
+        st.dataframe(table_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+
+
 def render_active_leads_section():
     """Rendert Tabellen mit aktiven und neuen Leads aus Zoho."""
     st.markdown('<p class="section-header">📋 Aktive Leads Energie</p>', unsafe_allow_html=True)
@@ -379,6 +431,7 @@ def page_dashboard():
     render_website_section(filtered_df)
     render_sales_section(filtered_df)
     render_active_leads_section()
+    render_sales_section_lizenzen()
     render_users_energy_section(filtered_df)
 
     # Footer

@@ -208,18 +208,28 @@ def load_targets() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=config.CACHE_TTL)
-def load_active_leads() -> pd.DataFrame:
-    """Lädt die aktive Lead-Liste aus dem zoho_leads Sheet."""
+def _load_leads_sheet(sheet_name: str) -> pd.DataFrame:
+    """Lädt eine Lead-Liste aus dem angegebenen Worksheet."""
     client = _get_gspread_client()
     if client and config.GOOGLE_SHEETS_ID:
         try:
             sheet = client.open_by_key(config.GOOGLE_SHEETS_ID)
-            worksheet = sheet.worksheet("zoho_leads")
+            worksheet = sheet.worksheet(sheet_name)
             data = worksheet.get_all_records()
             return pd.DataFrame(data)
         except Exception as e:
-            logger.warning(f"zoho_leads Sheet nicht gefunden: {e}")
+            logger.warning(f"{sheet_name} Sheet nicht gefunden: {e}")
     return pd.DataFrame()
+
+
+def load_active_leads() -> pd.DataFrame:
+    """Lädt die aktive Lead-Liste der Pipeline Energie aus dem zoho_leads Sheet."""
+    return _load_leads_sheet("zoho_leads")
+
+
+def load_active_leads_lizenzen() -> pd.DataFrame:
+    """Lädt die Lead-Liste der Pipeline Lizenzen aus dem zoho_leads_lizenzen Sheet."""
+    return _load_leads_sheet("zoho_leads_lizenzen")
 
 
 def is_using_dummy_data() -> bool:

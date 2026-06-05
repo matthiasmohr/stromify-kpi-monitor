@@ -194,19 +194,22 @@ def backfill_ga_rows(ga_history: dict):
         logger.info(f"Backfill: Alle {skipped} Tage bereits vorhanden")
 
 
-def write_active_leads(leads: list):
+def write_active_leads(leads: list, sheet_name: str = "zoho_leads"):
     """
-    Schreibt ALLE Deals in das Sheet 'zoho_leads' mit Status-Attribut.
+    Schreibt ALLE Deals in das angegebene Sheet mit Status-Attribut.
     Status: new | active | won | lost | waiting
     Überschreibt immer den kompletten Inhalt.
+
+    sheet_name: Ziel-Worksheet (z.B. "zoho_leads" für Energie,
+                "zoho_leads_lizenzen" für Lizenzen).
     """
     client = _get_client()
     sheet = client.open_by_key(config.GOOGLE_SHEETS_ID)
 
     try:
-        worksheet = sheet.worksheet("zoho_leads")
+        worksheet = sheet.worksheet(sheet_name)
     except Exception:
-        worksheet = sheet.add_worksheet(title="zoho_leads", rows=500, cols=8)
+        worksheet = sheet.add_worksheet(title=sheet_name, rows=500, cols=8)
 
     headers = ["name", "company", "stage", "status", "amount", "created_date", "closing_date"]
     rows = [headers]
@@ -223,7 +226,7 @@ def write_active_leads(leads: list):
 
     _retry(lambda: worksheet.clear())
     _retry(lambda: worksheet.update("A1", rows, value_input_option="RAW"))
-    logger.info(f"zoho_leads Sheet aktualisiert: {len(leads)} Deals total")
+    logger.info(f"{sheet_name} Sheet aktualisiert: {len(leads)} Deals total")
 
 
 def _calc_customers_new(df, current_month: str) -> int:

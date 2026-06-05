@@ -92,6 +92,7 @@ def run_fetch():
     # 3. Zoho CRM
     logger.info("🎯 Hole Zoho CRM Daten...")
     active_leads = []
+    lizenzen_leads = []
     if config.ZOHO_CLIENT_ID and config.ZOHO_CLIENT_SECRET and config.ZOHO_REFRESH_TOKEN:
         zoho_token = None
         try:
@@ -133,6 +134,21 @@ def run_fetch():
         except Exception as e:
             errors.append(f"Zoho Leads: {e}")
             logger.error(f"Zoho Leads Fehler: {e}")
+
+        try:
+            # Leads der Pipeline "Lizenzen" für separaten Dashboard-Funnel.
+            lizenzen_leads = fetch_zoho_all_leads(
+                config.ZOHO_CLIENT_ID,
+                config.ZOHO_CLIENT_SECRET,
+                config.ZOHO_REFRESH_TOKEN,
+                config.ZOHO_API_DOMAIN,
+                config.ZOHO_ACCOUNTS_URL,
+                access_token=zoho_token,
+                pipeline="Lizenzen",
+            )
+        except Exception as e:
+            errors.append(f"Zoho Lizenzen: {e}")
+            logger.error(f"Zoho Lizenzen Fehler: {e}")
     else:
         logger.warning("Zoho nicht konfiguriert (ZOHO_CLIENT_ID, SECRET oder REFRESH_TOKEN fehlt)")
 
@@ -173,6 +189,15 @@ def run_fetch():
             except Exception as e:
                 errors.append(f"Zoho Leads Sheet: {e}")
                 logger.error(f"Zoho Leads Sheet Fehler: {e}")
+
+        # 5c. Zoho Lizenzen-Lead-Liste (eigenes Sheet)
+        if lizenzen_leads:
+            try:
+                write_active_leads(lizenzen_leads, sheet_name="zoho_leads_lizenzen")
+                logger.info("✅ Zoho Lizenzen-Lead-Liste geschrieben")
+            except Exception as e:
+                errors.append(f"Zoho Lizenzen Sheet: {e}")
+                logger.error(f"Zoho Lizenzen Sheet Fehler: {e}")
     else:
         logger.warning("Google Sheets nicht konfiguriert oder keine Daten vorhanden")
         if all_data:
