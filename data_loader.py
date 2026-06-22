@@ -235,3 +235,136 @@ def load_active_leads_lizenzen() -> pd.DataFrame:
 def is_using_dummy_data() -> bool:
     """Prüft ob Dummy-Daten verwendet werden."""
     return not (config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON)
+
+
+def _generate_dummy_logins() -> pd.DataFrame:
+    """Generiert Dummy-Login-Daten (externe Nutzer) für den Demo-Modus."""
+    import random
+
+    random.seed(7)
+    names = [
+        "anna.berg@example.com", "tom.klein@kunde-gmbh.de", "m.schulz@solarpark.de",
+        "info@stadtwerke-musterstadt.de", "j.weber@energie-ag.de", "lisa.fux@webmail.com",
+    ]
+    now = datetime.now()
+    rows = []
+    for i, email in enumerate(names):
+        rows.append({
+            "date": now - timedelta(hours=i * 7 + random.randint(0, 6)),
+            "email": email,
+            "connection": random.choice(["Username-Password-Authentication", "google-oauth2"]),
+            "logins_count": random.randint(1, 40),
+            "ip": f"5.{random.randint(1,250)}.{random.randint(1,250)}.{random.randint(1,250)}",
+        })
+    return pd.DataFrame(rows)
+
+
+def _get_auth0_mgmt_token() -> str | None:
+    """Holt ein Management-API Token (Client Credentials Flow). Gibt None bei Fehler."""
+    if not (config.AUTH0_DOMAIN and config.AUTH0_CLIENT_ID and config.AUTH0_CLIENT_SECRET):
+        return None
+    try:
+        import requests
+
+        resp = requests.post(
+            f"https://{config.AUTH0_DOMAIN}/oauth/token",
+            json={
+                "grant_type": "client_credentials",
+                "client_id": config.AUTH0_CLIENT_ID,
+                "client_secret": config.AUTH0_CLIENT_SECRET,
+                "audience": f"https://{config.AUTH0_DOMAIN}/api/v2/",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()["access_token"]
+    except Exception as e:
+        logger.error(f"Auth0 Management-Token fehlgeschlagen: {e}")
+        return None
+
+
+@st.cache_data(ttl=config.CACHE_TTL)
+def load_recent_logins(limit: int = 50) -> pd.DataFrame:
+    """
+    Lädt die zuletzt eingeloggten Nutzer aus der Auth0 Management API.
+
+    Statt über die Logs (kurze Retention) wird die User-Liste (/api/v2/users)
+    abgefragt und nach dem `last_login`-Feld absteigend sortiert. Das bleibt
+    dauerhaft am Nutzer erhalten.
+
+    Nutzer der internen Domain (config.ALLOWED_EMAIL_DOMAIN, z. B. @stromify.de)
+    werden ausgefiltert – es interessieren nur externe Nutzer.
+
+    Spalten: date, email, connection, logins_count, ip
+    """
+    if not (config.AUTH0_DOMAIN and config.AUTH0_CLIENT_ID and config.AUTH0_CLIENT_SECRET):
+        logger.info("Auth0 nicht konfiguriert – verwende Dummy-Logins")
+        df = _generate_dummy_logins()
+    else:
+        token = _get_auth0_mgmt_token()
+        if not token:
+            return _filter_logins(_generate_dummy_logins())
+
+        try:
+            import requests
+
+            rows = []
+            internal_domain = config.ALLOWED_EMAIL_DOMAIN.lower().lstrip("@")
+            page = 0
+            # Mehr holen als limit, da interne Nutzer noch rausgefiltert werden.
+            while len(rows) < limit and page < 10:
+                resp = requests.get(
+                    f"https://{config.AUTH0_DOMAIN}/api/v2/users",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={
+                        "sort": "last_login:-1",  # zuletzt eingeloggt zuerst
+                        "q": "_exists_:last_login",  # nur Nutzer, die schon eingeloggt waren
+                        "search_engine": "v3",
+                        "page": page,
+                        "per_page": 100,
+                        "include_totals": "false",
+                        "fields": "email,last_login,last_ip,logins_count,identities",
+                        "include_fields": "true",
+                    },
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                users = resp.json()
+                if not users:
+                    break
+                for u in users:
+                    email = (u.get("email") or "").strip()
+                    last_login = u.get("last_login")
+                    if not email or "@" not in email or not last_login:
+                        continue
+                    if email.lower().endswith("@" + internal_domain):
+                        continue
+                    identities = u.get("identities") or []
+                    connection = identities[0].get("connection", "") if identities else ""
+                    rows.append({
+                        "date": pd.to_datetime(last_login, errors="coerce"),
+                        "email": email,
+                        "connection": connection,
+                        "logins_count": u.get("logins_count", 0),
+                        "ip": u.get("last_ip", ""),
+                    })
+                    if len(rows) >= limit:
+                        break
+                page += 1
+
+            df = pd.DataFrame(rows)
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der Auth0-Nutzer: {e}")
+            return pd.DataFrame()
+
+    return _filter_logins(df, limit)
+
+
+def _filter_logins(df: pd.DataFrame, limit: int = 50) -> pd.DataFrame:
+    """Filtert interne Logins raus und begrenzt auf die letzten `limit` Einträge."""
+    if df.empty:
+        return df
+    internal_domain = config.ALLOWED_EMAIL_DOMAIN.lower().lstrip("@")
+    df = df[~df["email"].str.lower().str.endswith("@" + internal_domain)]
+    df = df.sort_values("date", ascending=False).head(limit).reset_index(drop=True)
+    return df

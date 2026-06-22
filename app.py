@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 import config
-from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, load_active_leads, load_active_leads_lizenzen, is_using_dummy_data
+from data_loader import load_daily_kpis, load_monthly_kpis, load_targets, load_active_leads, load_active_leads_lizenzen, load_recent_logins, is_using_dummy_data
 import charts
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ def render_header_nav(active: str):
     """Rendert den Titel + horizontale Navigation."""
     st.markdown("# ⚡ Stromify KPI Monitor")
 
-    col_nav1, col_nav2, col_nav3, _, col_user = st.columns([1, 1, 1, 3, 1.5])
+    col_nav1, col_nav2, col_nav3, col_nav4, _, col_user = st.columns([1, 1, 1, 1, 2, 1.5])
     with col_nav1:
         if st.button("📊 Dashboard", width='stretch',
                      type="primary" if active == "dashboard" else "secondary"):
@@ -113,6 +113,11 @@ def render_header_nav(active: str):
             st.session_state.page = "targets"
             st.rerun()
     with col_nav3:
+        if st.button("🔐 Logins", width='stretch',
+                     type="primary" if active == "logins" else "secondary"):
+            st.session_state.page = "logins"
+            st.rerun()
+    with col_nav4:
         if is_using_dummy_data():
             st.warning("📊 Demo-Modus")
     with col_user:
@@ -628,6 +633,60 @@ def page_targets():
 
 
 # ============================================================
+# Logins Page
+# ============================================================
+
+def page_logins():
+    """Seite: Letzte Logins externer Nutzer (Auth0)."""
+    render_header_nav("logins")
+
+    st.markdown("## 🔐 Letzte Logins")
+    st.caption(
+        f"Zuletzt eingeloggte externe Nutzer (ohne {config.ALLOWED_EMAIL_DOMAIN}). "
+        "Quelle: Auth0 (last_login pro Nutzer)."
+    )
+    st.markdown("---")
+
+    logins_df = load_recent_logins(limit=100)
+
+    if logins_df.empty:
+        st.info(
+            "Keine externen Logins gefunden. Entweder gab es keine, oder die Auth0 "
+            "Management-App hat keine `read:users`-Berechtigung."
+        )
+        return
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(label="👥 Logins (Anzahl)", value=f"{len(logins_df):,}")
+    with col2:
+        st.metric(label="🧑 Eindeutige Nutzer", value=f"{logins_df['email'].nunique():,}")
+
+    st.markdown("")
+
+    display_df = logins_df.copy()
+    if "date" in display_df.columns:
+        display_df["date"] = pd.to_datetime(display_df["date"]).dt.strftime("%d.%m.%Y %H:%M")
+
+    col_labels = {
+        "date": "Letzter Login",
+        "email": "E-Mail",
+        "connection": "Methode",
+        "logins_count": "Logins gesamt",
+    }
+    display_cols = [c for c in ["date", "email", "connection", "logins_count"] if c in display_df.columns]
+
+    st.dataframe(
+        display_df[display_cols].rename(columns=col_labels),
+        width='stretch',
+        hide_index=True,
+    )
+
+    st.markdown("---")
+    st.caption(f"Stromify KPI Monitor | Letztes Update: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+
+
+# ============================================================
 # Main Router
 # ============================================================
 
@@ -719,6 +778,8 @@ def main():
 
     if st.session_state.page == "targets":
         page_targets()
+    elif st.session_state.page == "logins":
+        page_logins()
     else:
         page_dashboard()
 
