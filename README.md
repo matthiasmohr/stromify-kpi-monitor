@@ -135,7 +135,7 @@ Setup im Railway-Dashboard:
 | `ZOHO_REFRESH_TOKEN` | Zoho OAuth Refresh Token |
 | `ZOHO_API_DOMAIN` | Zoho API Domain (Default: `https://www.zohoapis.eu`) |
 | `ZOHO_ACCOUNTS_URL` | Zoho Accounts URL (Default: `https://accounts.zoho.eu`) |
-| `AUTH0_DOMAIN` / `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` | Auth0 **M2M-App** für die MAU-Metrik im Cronjob |
+| `AUTH0_DOMAIN` / `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` | Auth0 **M2M-App** für die MAU-Metrik (Cronjob) und die "Letzte Logins"-Ansicht. Benötigt die Scopes `read:stats` **und** `read:users`. |
 | `AUTH0_LOGIN_DOMAIN` | Auth0-Tenant-Domain für den Dashboard-Login |
 | `AUTH0_LOGIN_CLIENT_ID` / `AUTH0_LOGIN_CLIENT_SECRET` | Auth0 **Regular Web App** für den Login |
 | `AUTH0_REDIRECT_URI` | Callback-URL, z.B. `https://<app>.up.railway.app/oauth2callback` |
