@@ -2,7 +2,6 @@
 Stromify KPI Monitor - Dashboard
 Streamlit-Frontend zur Visualisierung der Unternehmens-KPIs.
 """
-import hashlib
 import logging
 import streamlit as st
 import pandas as pd
@@ -21,15 +20,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# --- Cookie Controller (nach set_page_config, aber vor allen anderen st-Calls) ---
-_cookie_controller = None
-if config.DASHBOARD_PASSWORD:
-    try:
-        from streamlit_cookies_controller import CookieController
-        _cookie_controller = CookieController()
-    except Exception:
-        pass
 
 # --- Custom CSS ---
 st.markdown("""
@@ -111,20 +101,26 @@ def render_header_nav(active: str):
     """Rendert den Titel + horizontale Navigation."""
     st.markdown("# ⚡ Stromify KPI Monitor")
 
-    col_nav1, col_nav2, col_nav3, _ = st.columns([1, 1, 1, 4])
+    col_nav1, col_nav2, col_nav3, _, col_user = st.columns([1, 1, 1, 3, 1.5])
     with col_nav1:
-        if st.button("📊 Dashboard", use_container_width=True,
+        if st.button("📊 Dashboard", width='stretch',
                      type="primary" if active == "dashboard" else "secondary"):
             st.session_state.page = "dashboard"
             st.rerun()
     with col_nav2:
-        if st.button("🎯 Jahresziele", use_container_width=True,
+        if st.button("🎯 Jahresziele", width='stretch',
                      type="primary" if active == "targets" else "secondary"):
             st.session_state.page = "targets"
             st.rerun()
     with col_nav3:
         if is_using_dummy_data():
             st.warning("📊 Demo-Modus")
+    with col_user:
+        if _auth_configured() and st.user.is_logged_in:
+            email = getattr(st.user, "email", "") or ""
+            st.caption(f"👤 {email}")
+            if st.button("Abmelden", width='stretch'):
+                st.logout()
 
     st.markdown("---")
 
@@ -256,7 +252,7 @@ def render_website_section(df: pd.DataFrame):
             labels={"ga_visitors": "Besucher", "ga_sessions": "Sessions"},
             title="Besucher & Sessions",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with col2:
         fig = charts.area_chart(
@@ -264,7 +260,7 @@ def render_website_section(df: pd.DataFrame):
             title="Absprungrate (%)",
             color="#E74C3C",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def render_sales_section(df: pd.DataFrame):
@@ -292,7 +288,7 @@ def render_sales_section(df: pd.DataFrame):
         stages = ["Gesamt", "Aktiv", "Aktiv (Neu)", "Warteschleife", "Gewonnen", "Verloren"]
         values = [total, active_old, active_new, waiting, won, lost]
         fig = charts.funnel_chart(stages, values, title="Lead Pipeline (aktuell)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with col2:
         fig = charts.line_chart(
@@ -300,7 +296,7 @@ def render_sales_section(df: pd.DataFrame):
             labels={"zoho_deals_total": "Leads Gesamt"},
             title="Leads Trend",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def render_sales_section_lizenzen():
@@ -327,7 +323,7 @@ def render_sales_section_lizenzen():
         stages = ["Gesamt", "Aktiv", "Aktiv (Neu)", "Warteschleife", "Gewonnen", "Verloren"]
         values = [total, active_old, active_new, waiting, won, lost]
         fig = charts.funnel_chart(stages, values, title="Lead Pipeline Lizenzen (aktuell)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with col2:
         col_labels = {
@@ -345,7 +341,7 @@ def render_sales_section_lizenzen():
         table_df = pd.concat([leads_df[active_mask], leads_df[~active_mask]])[display_cols]
 
         st.markdown(f"**📋 Alle Leads im Detail** – {len(table_df)} Leads")
-        st.dataframe(table_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+        st.dataframe(table_df.rename(columns=col_labels), width='stretch', hide_index=True)
 
 
 def render_active_leads_section():
@@ -377,14 +373,14 @@ def render_active_leads_section():
     with col1:
         st.markdown(f"**🆕 Neu (letzte 14 Tage)** – {len(new_df)} Leads")
         if not new_df.empty:
-            st.dataframe(new_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+            st.dataframe(new_df.rename(columns=col_labels), width='stretch', hide_index=True)
         else:
             st.caption("Keine neuen Leads in den letzten 14 Tagen.")
 
     with col2:
         st.markdown(f"**🔄 Aktiv (älter)** – {len(active_df)} Leads")
         if not active_df.empty:
-            st.dataframe(active_df.rename(columns=col_labels), use_container_width=True, hide_index=True)
+            st.dataframe(active_df.rename(columns=col_labels), width='stretch', hide_index=True)
         else:
             st.caption("Keine weiteren aktiven Leads.")
 
@@ -399,14 +395,14 @@ def render_users_energy_section(df: pd.DataFrame):
             title="Active Users (MAU)",
             color="#4ECDC4",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with col_energy:
         fig = charts.area_chart(
             df, x="date", y="notion_yearly_consumption_gwh",
             title="Yearly Consumption (GWh)",
             color="#FFE66D",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def page_dashboard():
@@ -530,7 +526,7 @@ def render_yearly_targets(daily_df: pd.DataFrame, targets_df: pd.DataFrame):
                     title=f"{icon} {label}",
                     suffix=unit,
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
                 # On-Track Status
                 on_track_target = target_val * year_progress
@@ -608,7 +604,7 @@ def render_monthly_breakdown(daily_df: pd.DataFrame, monthly_df: pd.DataFrame, t
         **charts.CHART_LAYOUT,
     )
     fig.update_layout(height=400, barmode="group")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def page_targets():
@@ -635,45 +631,83 @@ def page_targets():
 # Main Router
 # ============================================================
 
+def _auth_configured() -> bool:
+    """True, wenn Streamlit eine [auth]-Konfiguration in secrets.toml gefunden hat."""
+    try:
+        return "auth" in st.secrets
+    except Exception:
+        return False
+
+
 def _check_auth() -> bool:
-    """Prüft ob der User eingeloggt ist. Gibt True zurück wenn Zugriff erlaubt."""
-    password = config.DASHBOARD_PASSWORD
-    if not password:
-        return True  # Kein Passwort konfiguriert → offen
+    """Login via Auth0 (OIDC). Gibt True zurück, wenn der Zugriff erlaubt ist.
 
-    pw_hash = hashlib.sha256(password.encode()).hexdigest()
-
-    # Cookie prüfen (Controller wurde auf Top-Level instanziiert)
-    if _cookie_controller is not None:
-        try:
-            if _cookie_controller.get("stromify_auth") == pw_hash:
-                return True
-        except Exception:
-            pass
-
-    # Session prüfen (direkt nach Login, bevor Cookie beim nächsten Load gelesen wird)
-    if st.session_state.get("authenticated"):
+    Zugriff nur für eingeloggte Nutzer mit verifizierter E-Mail-Adresse der
+    konfigurierten Domain (config.ALLOWED_EMAIL_DOMAIN).
+    """
+    if config.DISABLE_AUTH:
+        # Bewusst deaktiviert (nur lokale Entwicklung). Sichtbarer Hinweis.
+        st.warning("⚠️ Auth ist via DISABLE_AUTH deaktiviert – nur für lokale Entwicklung!")
         return True
 
-    # Login-Formular
-    st.markdown(
-        "<h1 style='text-align:center; margin-top: 80px;'>⚡ Stromify KPI Monitor</h1>",
-        unsafe_allow_html=True,
-    )
-    col = st.columns([1, 2, 1])[1]
-    with col:
-        pw_input = st.text_input("Passwort", type="password", label_visibility="collapsed",
-                                  placeholder="Passwort eingeben...")
-        if st.button("Login", use_container_width=True):
-            if hashlib.sha256(pw_input.encode()).hexdigest() == pw_hash:
-                st.session_state["authenticated"] = True
-                if _cookie_controller is not None:
-                    _cookie_controller.set("stromify_auth", pw_hash,
-                                           max_age=60 * 60 * 24 * 365 * 10)
-                st.rerun()
+    if not _auth_configured():
+        # Fail-closed: ohne [auth]-Konfiguration (z. B. fehlende secrets.toml) kein Zugriff.
+        st.markdown(
+            "<h1 style='text-align:center; margin-top: 80px;'>⚡ Stromify KPI Monitor</h1>",
+            unsafe_allow_html=True,
+        )
+        col = st.columns([1, 2, 1])[1]
+        with col:
+            st.error(
+                "Login nicht konfiguriert: Es wurde kein `[auth]`-Block in "
+                "`.streamlit/secrets.toml` gefunden. Der Zugriff ist deshalb gesperrt."
+            )
+            st.caption(
+                "Lokal: `.streamlit/secrets.toml` aus der `.example`-Vorlage anlegen "
+                "oder zum Testen `DISABLE_AUTH=true` setzen. Auf Railway müssen die "
+                "`AUTH0_LOGIN_*`-Variablen gesetzt sein."
+            )
+        return False
+
+    if not st.user.is_logged_in:
+        st.markdown(
+            "<h1 style='text-align:center; margin-top: 80px;'>⚡ Stromify KPI Monitor</h1>",
+            unsafe_allow_html=True,
+        )
+        col = st.columns([1, 2, 1])[1]
+        with col:
+            st.markdown(
+                f"<p style='text-align:center; color:#8899AA;'>Anmeldung nur mit "
+                f"<b>{config.ALLOWED_EMAIL_DOMAIN}</b>-Account</p>",
+                unsafe_allow_html=True,
+            )
+            if st.button("🔐 Mit Stromify-Account anmelden", width='stretch'):
+                st.login()
+        return False
+
+    email = (getattr(st.user, "email", None) or "").lower()
+    email_verified = getattr(st.user, "email_verified", True)
+    domain = config.ALLOWED_EMAIL_DOMAIN.lower()
+
+    if not email.endswith(domain) or not email_verified:
+        st.markdown(
+            "<h1 style='text-align:center; margin-top: 80px;'>⚡ Stromify KPI Monitor</h1>",
+            unsafe_allow_html=True,
+        )
+        col = st.columns([1, 2, 1])[1]
+        with col:
+            if not email_verified:
+                st.error("Deine E-Mail-Adresse ist nicht verifiziert.")
             else:
-                st.error("Falsches Passwort")
-    return False
+                st.error(
+                    f"Kein Zugriff: Nur {config.ALLOWED_EMAIL_DOMAIN}-Adressen sind "
+                    f"erlaubt. Angemeldet als {email or 'unbekannt'}."
+                )
+            if st.button("Abmelden", width='stretch'):
+                st.logout()
+        return False
+
+    return True
 
 
 def main():

@@ -31,13 +31,22 @@ ZOHO_REFRESH_TOKEN = os.getenv("ZOHO_REFRESH_TOKEN", "")
 ZOHO_API_DOMAIN = os.getenv("ZOHO_API_DOMAIN", "https://www.zohoapis.eu")
 ZOHO_ACCOUNTS_URL = os.getenv("ZOHO_ACCOUNTS_URL", "https://accounts.zoho.eu")
 
-# --- Auth0 ---
+# --- Auth0 Management API (Machine-to-Machine App) ---
+# Wird vom Cronjob für die MAU-Metrik genutzt – NICHT für Login.
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID", "")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
-# --- Dashboard Auth ---
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
+# --- Dashboard Login (Auth0 OIDC, "Regular Web Application") ---
+# Die eigentliche Login-Konfiguration (client_id/secret/domain) liest Streamlit
+# aus .streamlit/secrets.toml ([auth]-Block); auf Railway wird diese von start.sh
+# aus den AUTH0_LOGIN_* Env-Variablen generiert.
+# Nur E-Mail-Adressen mit dieser Domain dürfen das Dashboard sehen.
+ALLOWED_EMAIL_DOMAIN = os.getenv("ALLOWED_EMAIL_DOMAIN", "@stromify.de")
+
+# Notausgang für die LOKALE Entwicklung: deaktiviert den Login komplett.
+# NIEMALS in der Produktion (Railway) setzen! Default = aktiv (fail-closed).
+DISABLE_AUTH = os.getenv("DISABLE_AUTH", "").strip().lower() in ("1", "true", "yes")
 
 # --- KPI Spalten-Mapping ---
 DAILY_COLUMNS = [
