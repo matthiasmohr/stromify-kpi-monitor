@@ -29,8 +29,7 @@ sys.path.insert(0, ".")
 
 import config
 from cronjob.fetch_ga import fetch_ga_data, fetch_ga_historical
-from cronjob.fetch_notion import fetch_notion_data
-from cronjob.fetch_zoho import fetch_zoho_data, fetch_zoho_all_leads
+from cronjob.fetch_zoho import fetch_zoho_data, fetch_zoho_all_leads, fetch_zoho_contracts
 from cronjob.fetch_auth0 import fetch_auth0_data
 from cronjob.sheet_writer import write_daily_row, update_monthly_aggregation, backfill_ga_rows, write_active_leads
 
@@ -72,24 +71,7 @@ def run_fetch():
     else:
         logger.warning("GA4 nicht konfiguriert (GA_PROPERTY_ID oder GOOGLE_SERVICE_ACCOUNT_JSON fehlt)")
 
-    # 2. Notion
-    logger.info("📝 Hole Notion Daten...")
-    if config.NOTION_API_KEY and config.NOTION_CUSTOMERS_DB_ID:
-        try:
-            notion_data = fetch_notion_data(
-                config.NOTION_API_KEY,
-                config.NOTION_CUSTOMERS_DB_ID,
-                config.NOTION_MALOS_DB_ID,
-                config.NOTION_PROVISIONEN_DB_ID,
-            )
-            all_data.update(notion_data)
-        except Exception as e:
-            errors.append(f"Notion: {e}")
-            logger.error(f"Notion Fehler: {e}")
-    else:
-        logger.warning("Notion nicht konfiguriert (NOTION_API_KEY oder NOTION_CUSTOMERS_DB_ID fehlt)")
-
-    # 3. Zoho CRM
+    # 2. Zoho CRM (Deals/Leads + Verträge – die Verträge ersetzen die frühere Notion-Quelle)
     logger.info("🎯 Hole Zoho CRM Daten...")
     active_leads = []
     lizenzen_leads = []
@@ -149,10 +131,26 @@ def run_fetch():
         except Exception as e:
             errors.append(f"Zoho Lizenzen: {e}")
             logger.error(f"Zoho Lizenzen Fehler: {e}")
+
+        try:
+            # Vertrags-KPIs: aktive Verträge, Yearly Consumption, Provision, Lizenzumsatz
+            logger.info("📑 Hole Zoho Verträge...")
+            contract_data = fetch_zoho_contracts(
+                config.ZOHO_CLIENT_ID,
+                config.ZOHO_CLIENT_SECRET,
+                config.ZOHO_REFRESH_TOKEN,
+                config.ZOHO_API_DOMAIN,
+                config.ZOHO_ACCOUNTS_URL,
+                access_token=zoho_token,
+            )
+            all_data.update(contract_data)
+        except Exception as e:
+            errors.append(f"Zoho Verträge: {e}")
+            logger.error(f"Zoho Verträge Fehler: {e}")
     else:
         logger.warning("Zoho nicht konfiguriert (ZOHO_CLIENT_ID, SECRET oder REFRESH_TOKEN fehlt)")
 
-    # 4. Auth0
+    # 3. Auth0
     logger.info("📱 Hole Auth0 Daten...")
     if config.AUTH0_DOMAIN and config.AUTH0_CLIENT_ID and config.AUTH0_CLIENT_SECRET:
         try:
@@ -168,10 +166,10 @@ def run_fetch():
     else:
         logger.warning("Auth0 nicht konfiguriert – übersprungen")
 
-    # 5. In Google Sheets schreiben
+    # 4. In Google Sheets schreiben
     logger.info("📝 Schreibe Daten in Google Sheets...")
     if config.GOOGLE_SHEETS_ID and config.GOOGLE_SERVICE_ACCOUNT_JSON:
-        # 5a. KPI-Tagesdaten
+        # 4a. KPI-Tagesdaten
         if all_data:
             try:
                 write_daily_row(all_data)
@@ -181,7 +179,7 @@ def run_fetch():
                 errors.append(f"Sheet Writer: {e}")
                 logger.error(f"Sheet Writer Fehler: {e}")
 
-        # 5b. Zoho Lead-Liste (separat, damit Fehler hier nicht alles blockieren)
+        # 4b. Zoho Lead-Liste (separat, damit Fehler hier nicht alles blockieren)
         if active_leads:
             try:
                 write_active_leads(active_leads)
@@ -190,7 +188,7 @@ def run_fetch():
                 errors.append(f"Zoho Leads Sheet: {e}")
                 logger.error(f"Zoho Leads Sheet Fehler: {e}")
 
-        # 5c. Zoho Lizenzen-Lead-Liste (eigenes Sheet)
+        # 4c. Zoho Lizenzen-Lead-Liste (eigenes Sheet)
         if lizenzen_leads:
             try:
                 write_active_leads(lizenzen_leads, sheet_name="zoho_leads_lizenzen")

@@ -1,10 +1,12 @@
 """
 Stromify KPI Cronjob - Zoho CRM Data Fetcher
-Holt Deal-Pipeline und Conversion-Daten aus Zoho CRM.
+Holt Deal-Pipeline, Conversion-Daten und Vertrags-KPIs aus Zoho CRM.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import requests
+
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +66,13 @@ def _get_records_count(api_domain: str, access_token: str, module: str, criteria
     return total
 
 
-def _get_records(api_domain: str, access_token: str, module: str, criteria: str = "") -> list:
-    """Holt alle Datensätze aus einem Zoho CRM Modul (mit Paginierung)."""
+def _get_records(api_domain: str, access_token: str, module: str, fields: str, criteria: str = "") -> list:
+    """Holt alle Datensätze aus einem Zoho CRM Modul (mit Paginierung).
+
+    fields: kommaseparierte API-Namen – bei API v8 Pflicht für GET /{module}.
+    """
     headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
-    params = {"per_page": "200"}
+    params = {"per_page": "200", "fields": fields}
     if criteria:
         params["criteria"] = criteria
 
@@ -195,6 +200,101 @@ def fetch_zoho_all_leads(
     except Exception as e:
         logger.error(f"Fehler beim Abrufen aller Zoho-Leads: {e}")
         return []
+
+
+def _parse_zoho_date(value) -> date | None:
+    """Parst ein Zoho-Datumsfeld ("YYYY-MM-DD"); None bei leer/ungültig."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def calc_contract_kpis(contracts: list, today: date | None = None) -> dict:
+    """
+    Berechnet die Vertrags-KPIs aus einer Liste von Zoho-Verträgen (Modul Vertr_ge).
+
+    Definitionen (abgestimmt Sept. 2026):
+    - zoho_contracts_active:       Verträge vom Typ "Energie + Einsparvergütung", die aktiv sind.
+                                   Aktiv = kein Lieferende ODER heute < Lieferende.
+                                   Ein Vertrag darf in der Zukunft starten und zählt trotzdem.
+    - zoho_yearly_consumption_gwh: Σ (JVP Strom + JVP Gas) aller Energie-Verträge, in GWh.
+    - zoho_provision_eur:          Σ "CLV Vertrag" aller Energie-Verträge.
+    - zoho_license_revenue_eur:    Σ "CLV Vertrag" aller Verträge vom Typ "Lizenz".
+
+    Die Summen werden bewusst NICHT auf aktive Verträge eingeschränkt (entspricht der
+    bisherigen Notion-Logik, die ebenfalls alle Einträge summiert hat).
+    """
+    today = today or date.today()
+
+    active = 0
+    kwh_total = 0.0
+    provision = 0.0
+    license_revenue = 0.0
+
+    for c in contracts:
+        typ = c.get("Vertragsart") or ""
+        clv = float(c.get("CLV_Vertrag") or 0)
+
+        if typ == config.ZOHO_CONTRACT_TYPE_ENERGY:
+            lieferende = _parse_zoho_date(c.get("Lieferende"))
+            if lieferende is None or today < lieferende:
+                active += 1
+            kwh_total += float(c.get("JVP") or 0) + float(c.get("JVP_Gas") or 0)
+            provision += clv
+        elif typ == config.ZOHO_CONTRACT_TYPE_LICENSE:
+            license_revenue += clv
+
+    return {
+        "zoho_contracts_active": active,
+        "zoho_yearly_consumption_gwh": round(kwh_total / 1_000_000, 2),
+        "zoho_provision_eur": round(provision, 2),
+        "zoho_license_revenue_eur": round(license_revenue, 2),
+    }
+
+
+def fetch_zoho_contracts(
+    client_id: str,
+    client_secret: str,
+    refresh_token: str,
+    api_domain: str = "https://www.zohoapis.eu",
+    accounts_url: str = "https://accounts.zoho.eu",
+    access_token: str = None,
+) -> dict:
+    """
+    Holt alle Verträge aus dem Zoho-Custom-Modul Vertr_ge und berechnet daraus die
+    Vertrags-KPIs (siehe calc_contract_kpis). Ersetzt die frühere Notion-Abfrage.
+
+    access_token: optional vorher geholter Token (verhindert doppelten Token-Refresh)
+    """
+    try:
+        if not access_token:
+            access_token = _refresh_access_token(client_id, client_secret, refresh_token, accounts_url)
+
+        contracts = _get_records(
+            api_domain,
+            access_token,
+            config.ZOHO_CONTRACTS_MODULE,
+            fields="Name,Vertragsart,JVP,JVP_Gas,CLV_Vertrag,Lieferende,Kunde",
+        )
+        kpis = calc_contract_kpis(contracts)
+        by_type = {}
+        for c in contracts:
+            t = c.get("Vertragsart") or "-"
+            by_type[t] = by_type.get(t, 0) + 1
+        logger.info(f"Zoho Verträge: {len(contracts)} gesamt {by_type} → {kpis}")
+        return kpis
+
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Zoho-Verträge: {e}")
+        return {
+            "zoho_contracts_active": 0,
+            "zoho_yearly_consumption_gwh": 0.0,
+            "zoho_provision_eur": 0.0,
+            "zoho_license_revenue_eur": 0.0,
+        }
 
 
 def fetch_zoho_data(

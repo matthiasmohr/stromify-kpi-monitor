@@ -7,4 +7,3 @@ google-auth==2.37.0
 google-analytics-data==0.18.15
 requests==2.32.3
 python-dotenv==1.0.1
-notion-client==2.3.0
