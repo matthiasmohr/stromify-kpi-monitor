@@ -105,27 +105,9 @@ def write_daily_row(data: dict):
 
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # Zeile zusammenbauen
-    row = [
-        today_str,
-        data.get("ga_visitors", 0),
-        data.get("ga_sessions", 0),
-        data.get("ga_bounce_rate", 0.0),
-        data.get("notion_customers_total", 0),
-        data.get("notion_yearly_consumption_gwh", 0.0),
-        data.get("notion_provision_eur", 0.0),
-        data.get("manual_license_revenue", 0.0),
-        data.get("zoho_deals_total", 0),
-        data.get("zoho_deals_new", 0),
-        data.get("zoho_deals_active", 0),
-        data.get("zoho_deals_won", 0),
-        data.get("zoho_deals_lost", 0),
-        data.get("zoho_deals_waiting", 0),
-        data.get("auth0_mau", 0),
-    ]
-
+    # Zeile in der Reihenfolge von DAILY_COLUMNS zusammenbauen; fehlende KPIs → 0.
     # Alle Werte als String für RAW-Modus (verhindert Locale-Probleme mit Komma/Punkt)
-    row = [str(v) for v in row]
+    row = [today_str] + [str(data.get(col, 0)) for col in config.DAILY_COLUMNS[1:]]
 
     # Prüfe ob heute schon ein Eintrag existiert (Spalte A = date)
     all_dates = _retry(lambda: worksheet.col_values(1))
@@ -171,21 +153,9 @@ def backfill_ga_rows(ga_history: dict):
             skipped += 1
             continue
         d = ga_history[date_str]
-        row = [
-            date_str,
-            d.get("ga_visitors", 0),
-            d.get("ga_sessions", 0),
-            d.get("ga_bounce_rate", 0.0),
-            0,    # notion_customers_total – unbekannt für historische Tage
-            0.0,  # notion_yearly_consumption_gwh
-            0,    # zoho_deals_total
-            0,    # zoho_deals_new
-            0,    # zoho_deals_active
-            0,    # zoho_deals_won
-            0,    # zoho_deals_lost
-            0,    # zoho_deals_waiting
-        ]
-        new_rows.append([str(v) for v in row])
+        # Nur GA-Werte bekannt; alle anderen Spalten (Zoho, Auth0, …) → 0 für historische Tage
+        row = [date_str] + [str(d.get(col, 0)) for col in config.DAILY_COLUMNS[1:]]
+        new_rows.append(row)
 
     if new_rows:
         worksheet.append_rows(new_rows, value_input_option="RAW")
@@ -229,28 +199,43 @@ def write_active_leads(leads: list, sheet_name: str = "zoho_leads"):
     logger.info(f"{sheet_name} Sheet aktualisiert: {len(leads)} Deals total")
 
 
-def _calc_customers_new(df, current_month: str) -> int:
+def _calc_month_delta(df, current_month: str, col: str) -> int:
     """
-    Berechnet Neukunden im Monat.
+    Berechnet den Zuwachs einer Snapshot-Spalte im Monat (z. B. Neukunden / neue Verträge).
     Vergleicht letzten Wert des aktuellen Monats mit dem letzten Wert des Vormonats.
     Falls kein Vormonat existiert (erster Monat), wird der aktuelle Endwert genommen.
-    Nur Zeilen mit Kunden > 0 werden berücksichtigt (Backfill-Zeilen haben 0).
+    Nur Zeilen mit Wert > 0 werden berücksichtigt (Backfill-Zeilen und Tage vor der
+    Einführung der Spalte haben 0).
     """
-    # Nur Zeilen mit echten Kundendaten (Backfill-Zeilen haben 0)
-    df_real = df[df["notion_customers_total"] > 0]
+    if col not in df.columns:
+        return 0
+    df_real = df[df[col] > 0]
 
     month_real = df_real[df_real["month"] == current_month]
     if month_real.empty:
         return 0
-    current_end = int(month_real["notion_customers_total"].iloc[-1])
+    current_end = int(month_real[col].iloc[-1])
 
     # Vormonat finden
     prev_months = df_real[df_real["month"] < current_month]
     if prev_months.empty:
         return current_end
 
-    prev_end = int(prev_months["notion_customers_total"].iloc[-1])
+    prev_end = int(prev_months[col].iloc[-1])
     return max(0, current_end - prev_end)
+
+
+def _calc_customers_new(df, current_month: str) -> int:
+    """Neukunden im Monat (Notion-Spalte, eingefroren – nur noch für die Historie)."""
+    return _calc_month_delta(df, current_month, "notion_customers_total")
+
+
+def _last_positive(month_df, col: str, default=0.0):
+    """Letzter Wert > 0 einer Spalte im Monats-DataFrame (Snapshot-KPIs), sonst default."""
+    if col not in month_df.columns:
+        return default
+    col_df = month_df[month_df[col] > 0]
+    return col_df[col].iloc[-1] if not col_df.empty else default
 
 
 def update_monthly_aggregation():
@@ -293,15 +278,22 @@ def update_monthly_aggregation():
         logger.warning(f"Keine Daten für Monat {current_month}")
         return
 
-    # Für Snapshot-Werte (customers, gwh, provision) nur Zeilen mit echten Daten nutzen
-    # (Backfill-Zeilen haben 0 für Notion-Felder)
-    month_real = month_df[month_df["notion_customers_total"] > 0]
+    # Notion-Snapshots (eingefroren seit Sept. 2026, nur noch für die Historie):
+    # nur Zeilen mit echten Daten nutzen (Backfill-Zeilen haben 0 für Notion-Felder)
+    month_real = month_df[month_df["notion_customers_total"] > 0] if "notion_customers_total" in month_df.columns else month_df.iloc[0:0]
     customers_end = int(month_real["notion_customers_total"].iloc[-1]) if not month_real.empty else 0
     gwh_end = round(float(month_real["notion_yearly_consumption_gwh"].iloc[-1]), 2) if not month_real.empty else 0.0
     provision_end = round(float(month_real["notion_provision_eur"].iloc[-1]), 2) if not month_real.empty and "notion_provision_eur" in month_real.columns else 0.0
 
     # manual_license_revenue: Summe aller manuellen Einträge im Monat
     license_sum = round(float(month_df["manual_license_revenue"].sum()), 2) if "manual_license_revenue" in month_df.columns else 0.0
+
+    # Zoho-Vertrags-Snapshots: letzter bekannter Wert im Monat
+    contracts_end = int(_last_positive(month_df, "zoho_contracts_active", 0))
+    contracts_new = int(_calc_month_delta(df, current_month, "zoho_contracts_active"))
+    zoho_gwh_end = round(float(_last_positive(month_df, "zoho_yearly_consumption_gwh", 0.0)), 2)
+    zoho_provision_end = round(float(_last_positive(month_df, "zoho_provision_eur", 0.0)), 2)
+    zoho_license_end = round(float(_last_positive(month_df, "zoho_license_revenue_eur", 0.0)), 2)
 
     # Zoho-Snapshot: letzter bekannter Gesamtwert des Monats
     zoho_df = month_df[month_df["zoho_deals_total"] > 0]
@@ -333,7 +325,13 @@ def update_monthly_aggregation():
         zoho_status_ends["zoho_deals_lost"],
         zoho_status_ends["zoho_deals_waiting"],
         int(month_df["auth0_mau"].max()) if "auth0_mau" in month_df.columns else 0,
+        contracts_end,
+        contracts_new,
+        zoho_gwh_end,
+        zoho_provision_end,
+        zoho_license_end,
     ]
+    assert len(monthly_row) == len(config.MONTHLY_COLUMNS), "monthly_row passt nicht zu MONTHLY_COLUMNS"
 
     # Monthly Sheet aktualisieren
     monthly_ws = sheet.worksheet(config.SHEET_MONTHLY)

@@ -187,12 +187,13 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     # Vorperiode für Delta-Berechnung
     prev_df = df.iloc[-2 * days:-days] if len(df) >= 2 * days else pd.DataFrame()
 
-    # Snapshot-KPIs: letzter bekannter Wert (nur Zeilen mit echten Daten)
-    latest = df.iloc[-1]
-    customers_df = df[df["notion_customers_total"] > 0]
-    customers_val = int(customers_df["notion_customers_total"].iloc[-1]) if not customers_df.empty else 0
-    gwh_df = df[df["notion_yearly_consumption_gwh"] > 0]
-    gwh_val = gwh_df["notion_yearly_consumption_gwh"].iloc[-1] if not gwh_df.empty else 0.0
+    # Snapshot-KPIs: letzter bekannter Wert (nur Zeilen mit echten Daten).
+    # contracts_active / yearly_consumption_gwh / provision_eur / license_revenue_eur
+    # kommen aus Zoho (Verträge) mit Fallback auf Notion für alte Tage, siehe data_loader.
+    contracts_df = df[df["contracts_active"] > 0]
+    contracts_val = int(contracts_df["contracts_active"].iloc[-1]) if not contracts_df.empty else 0
+    gwh_df = df[df["yearly_consumption_gwh"] > 0]
+    gwh_val = gwh_df["yearly_consumption_gwh"].iloc[-1] if not gwh_df.empty else 0.0
 
     # Kumulative KPIs: Summe über Zeitraum
     ga_val = int(period_df["ga_visitors"].sum())
@@ -201,9 +202,9 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     ga_prev = int(prev_df["ga_visitors"].sum()) if not prev_df.empty else 0
     ga_delta = f"{((ga_val - ga_prev) / ga_prev * 100):+.1f}%" if ga_prev > 0 else None
 
-    customers_prev_df = df[df["notion_customers_total"] > 0].iloc[:-1] if len(customers_df) > 1 else pd.DataFrame()
-    customers_prev = int(customers_prev_df["notion_customers_total"].iloc[-1]) if not customers_prev_df.empty else 0
-    customers_delta = f"{customers_val - customers_prev:+.0f}" if customers_prev > 0 else None
+    # Verträge: Veränderung gegenüber dem ersten Tag im gewählten Zeitraum
+    contracts_prev = int(contracts_df["contracts_active"].iloc[0]) if len(contracts_df) > 1 else 0
+    contracts_delta = f"{contracts_val - contracts_prev:+.0f} ({days}d)" if contracts_prev > 0 else None
 
     # Leads aus zoho_leads Sheet
     leads_df = load_active_leads()
@@ -215,10 +216,11 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
         active_leads_val = 0
         active_delta = None
 
-    # Provision & Lizenzumsatz (Snapshot / letzter bekannter Wert)
-    prov_df = df[df.get("notion_provision_eur", pd.Series(dtype=float)).gt(0)] if "notion_provision_eur" in df.columns else pd.DataFrame()
-    prov_val = round(float(df[df["notion_provision_eur"] > 0]["notion_provision_eur"].iloc[-1]), 0) if "notion_provision_eur" in df.columns and not df[df["notion_provision_eur"] > 0].empty else 0.0
-    license_val = round(float(period_df["manual_license_revenue"].sum()), 0) if "manual_license_revenue" in period_df.columns else 0.0
+    # Provision & Lizenzumsatz: Snapshot (Σ CLV Vertrag aus Zoho), letzter bekannter Wert
+    prov_df = df[df["provision_eur"] > 0]
+    prov_val = round(float(prov_df["provision_eur"].iloc[-1]), 0) if not prov_df.empty else 0.0
+    license_df = df[df["license_revenue_eur"] > 0]
+    license_val = round(float(license_df["license_revenue_eur"].iloc[-1]), 0) if not license_df.empty else 0.0
 
     # Auth0 MAU
     mau_df = df[df["auth0_mau"] > 0] if "auth0_mau" in df.columns else pd.DataFrame()
@@ -229,7 +231,7 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     with col1:
         st.metric(label=f"🌐 Website Besucher ({days}d)", value=f"{ga_val:,}", delta=ga_delta)
     with col2:
-        st.metric(label="👥 Kunden Gesamt", value=f"{customers_val:,}", delta=customers_delta)
+        st.metric(label="📑 Aktive Verträge Energie", value=f"{contracts_val:,}", delta=contracts_delta)
     with col3:
         st.metric(label="🔄 Aktive Leads Energie", value=f"{active_leads_val:,}", delta=active_delta)
     with col4:
@@ -238,11 +240,11 @@ def render_kpi_cards(df: pd.DataFrame, days: int):
     # Zeile 2: Revenue & Energy
     col5, col6, col7 = st.columns(3)
     with col5:
-        st.metric(label="⚡ Yearly Consumption", value=f"{gwh_val:.1f} GWh")
+        st.metric(label="⚡ Yearly Consumption", value=f"{gwh_val:.1f} GWh", help="Σ JVP Strom + JVP Gas aller Verträge „Energie + Einsparvergütung“ (Zoho)")
     with col6:
-        st.metric(label="💰 Provision Energie", value=f"{prov_val:,.0f} €")
+        st.metric(label="💰 Provision Energie (CLV)", value=f"{prov_val:,.0f} €", help="Σ „CLV Vertrag“ aller Verträge „Energie + Einsparvergütung“ (Zoho)")
     with col7:
-        st.metric(label="📄 Lizenzumsatz", value=f"{license_val:,.0f} €")
+        st.metric(label="📄 Lizenzumsatz (CLV)", value=f"{license_val:,.0f} €", help="Σ „CLV Vertrag“ aller Verträge vom Typ „Lizenz“ (Zoho)")
 
 
 def render_website_section(df: pd.DataFrame):
@@ -403,7 +405,7 @@ def render_users_energy_section(df: pd.DataFrame):
         st.plotly_chart(fig, width='stretch')
     with col_energy:
         fig = charts.area_chart(
-            df, x="date", y="notion_yearly_consumption_gwh",
+            df, x="date", y="yearly_consumption_gwh",
             title="Yearly Consumption (GWh)",
             color="#FFE66D",
         )
@@ -447,7 +449,7 @@ def page_dashboard():
 def _calc_ytd_value(daily_df: pd.DataFrame, kpi: str) -> float:
     """
     Berechnet den Year-to-Date Wert für ein KPI.
-    - Snapshot-KPIs (customers_total, consumption, deals_total): letzter bekannter Wert
+    - Snapshot-KPIs (contracts_active, consumption, provision, license, deals_total): letzter bekannter Wert
     - zoho_deals_new: Anzahl Deals aus zoho_leads die dieses Jahr erstellt wurden
     - Kumulative KPIs (visitors, impressions): Summe über das Jahr
     """
@@ -466,8 +468,8 @@ def _calc_ytd_value(daily_df: pd.DataFrame, kpi: str) -> float:
         return 0
 
     # Snapshot-KPIs → letzter Wert
-    if kpi in ("notion_customers_total", "notion_yearly_consumption_gwh", "zoho_deals_total"):
-        real_df = year_df[year_df[kpi] > 0] if kpi != "notion_yearly_consumption_gwh" else year_df[year_df[kpi] > 0]
+    if kpi in ("contracts_active", "yearly_consumption_gwh", "provision_eur", "license_revenue_eur", "zoho_deals_total"):
+        real_df = year_df[year_df[kpi] > 0]
         return float(real_df[kpi].iloc[-1]) if not real_df.empty else 0.0
 
     # Kumulative KPIs → Summe
@@ -493,7 +495,7 @@ def render_yearly_targets(daily_df: pd.DataFrame, targets_df: pd.DataFrame):
     gauge_rows = [
         {
             "label": "🎯 Sales & Energy",
-            "kpis": ["notion_customers_total", "zoho_deals_new", "notion_yearly_consumption_gwh"],
+            "kpis": ["contracts_active", "zoho_deals_new", "yearly_consumption_gwh"],
         },
         {
             "label": "🌐 Social & Traffic",
@@ -572,8 +574,10 @@ def render_monthly_breakdown(daily_df: pd.DataFrame, monthly_df: pd.DataFrame, t
     # Mapping: daily KPI → monthly column name
     monthly_col_map = {
         "ga_visitors": "ga_visitors_sum",
-        "notion_customers_total": "notion_customers_end",
-        "notion_yearly_consumption_gwh": "notion_yearly_consumption_gwh",
+        "contracts_active": "contracts_active_end",
+        "yearly_consumption_gwh": "yearly_consumption_gwh",
+        "provision_eur": "provision_eur",
+        "license_revenue_eur": "license_revenue_eur",
         "zoho_deals_total": "zoho_deals_total_end",
     }
 

@@ -71,6 +71,24 @@ def _get_gspread_client():
         return None
 
 
+def apply_source_fallback(df: pd.DataFrame, mapping: list) -> pd.DataFrame:
+    """
+    Erzeugt quellen-neutrale KPI-Spalten (z. B. contracts_active) aus der zoho_*-Spalte
+    und fällt pro Zeile auf die eingefrorene notion_*-Spalte zurück, wenn der Zoho-Wert
+    fehlt oder 0 ist (Tage vor der Umstellung im Sept. 2026). So bleiben Charts lückenlos.
+
+    mapping: Liste von (ziel_spalte, zoho_spalte, notion_spalte), siehe config.KPI_SOURCE_FALLBACK.
+    """
+    if df.empty:
+        return df
+    df = df.copy()
+    for target, zoho_col, notion_col in mapping:
+        zoho = pd.to_numeric(df[zoho_col], errors="coerce").fillna(0.0) if zoho_col in df.columns else pd.Series(0.0, index=df.index)
+        notion = pd.to_numeric(df[notion_col], errors="coerce").fillna(0.0) if notion_col in df.columns else pd.Series(0.0, index=df.index)
+        df[target] = zoho.where(zoho > 0, notion)
+    return df
+
+
 def _generate_dummy_daily_data() -> pd.DataFrame:
     """Generiert realistische Dummy-Daten für die letzten 90 Tage."""
     import random
@@ -81,8 +99,8 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
 
     rows = []
     base_visitors = 250
-    base_customers = 72
-    base_gwh = 1.2
+    base_contracts = 12
+    base_gwh = 4.2
 
     for i, date in enumerate(dates):
         day_of_week = date.weekday()
@@ -92,8 +110,8 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
         visitors = int(base_visitors * growth * weekend_factor * random.uniform(0.8, 1.3))
         sessions = int(visitors * random.uniform(1.2, 1.8))
         bounce_rate = round(random.uniform(35, 55), 1)
-        customers = base_customers + (i // 5)
-        gwh = round(base_gwh + (i * 0.015) + random.uniform(-0.1, 0.1), 2)
+        contracts = base_contracts + (i // 9)
+        gwh = round(base_gwh + (i * 0.04) + random.uniform(-0.1, 0.1), 2)
         deals_new = int(random.uniform(2, 15) * weekend_factor)
         deals_total = 30 + (i // 3)
         deals_won = int(random.uniform(0, 4))
@@ -103,17 +121,23 @@ def _generate_dummy_daily_data() -> pd.DataFrame:
             "ga_visitors": visitors,
             "ga_sessions": sessions,
             "ga_bounce_rate": bounce_rate,
-            "notion_customers_total": customers,
-            "notion_yearly_consumption_gwh": gwh,
-            "notion_provision_eur": round(gwh * 8000, 0),  # Platzhalter: ~8k€ pro GWh
+            # Eingefrorene Notion-Spalten (Demo: leer, wie im echten Sheet nach der Umstellung)
+            "notion_customers_total": 0,
+            "notion_yearly_consumption_gwh": 0.0,
+            "notion_provision_eur": 0.0,
             "manual_license_revenue": 0.0,
             "auth0_mau": int(10 + i * 0.5 + random.uniform(-2, 2)),
             "zoho_deals_new": deals_new,
             "zoho_deals_total": deals_total,
             "zoho_deals_won": deals_won,
+            # Zoho Verträge
+            "zoho_contracts_active": contracts,
+            "zoho_yearly_consumption_gwh": gwh,
+            "zoho_provision_eur": round(gwh * 12000, 0),  # Platzhalter: ~12k€ CLV pro GWh
+            "zoho_license_revenue_eur": round(500 + i * 40, 0),
         })
 
-    return pd.DataFrame(rows)
+    return apply_source_fallback(pd.DataFrame(rows), config.KPI_SOURCE_FALLBACK)
 
 
 def _generate_dummy_monthly_data() -> pd.DataFrame:
@@ -124,24 +148,26 @@ def _generate_dummy_monthly_data() -> pd.DataFrame:
     monthly = daily.groupby("month").agg(
         ga_visitors_sum=("ga_visitors", "sum"),
         ga_visitors_avg=("ga_visitors", "mean"),
-        notion_customers_end=("notion_customers_total", "last"),
-        notion_customers_new=("notion_customers_total", lambda x: x.iloc[-1] - x.iloc[0]),
-        notion_yearly_consumption_gwh=("notion_yearly_consumption_gwh", "last"),
+        zoho_contracts_active_end=("zoho_contracts_active", "last"),
+        zoho_contracts_new=("zoho_contracts_active", lambda x: x.iloc[-1] - x.iloc[0]),
+        zoho_yearly_consumption_gwh=("zoho_yearly_consumption_gwh", "last"),
+        zoho_provision_eur=("zoho_provision_eur", "last"),
+        zoho_license_revenue_eur=("zoho_license_revenue_eur", "last"),
         zoho_deals_sum=("zoho_deals_new", "sum"),
         zoho_deals_won_sum=("zoho_deals_won", "sum"),
     ).reset_index()
 
     monthly["ga_visitors_avg"] = monthly["ga_visitors_avg"].round(0).astype(int)
 
-    return monthly
+    return apply_source_fallback(monthly, config.MONTHLY_SOURCE_FALLBACK)
 
 
 def _generate_dummy_targets() -> pd.DataFrame:
     """Generiert Dummy-Zielwerte (Jahresziele)."""
     return pd.DataFrame([
         {"kpi": "ga_visitors", "target_yearly": 120000, "unit": "Besucher", "category": "Website"},
-        {"kpi": "notion_customers_total", "target_yearly": 100, "unit": "Kunden", "category": "Sales"},
-        {"kpi": "notion_yearly_consumption_gwh", "target_yearly": 10.0, "unit": "GWh", "category": "Energy"},
+        {"kpi": "contracts_active", "target_yearly": 40, "unit": "Verträge", "category": "Sales"},
+        {"kpi": "yearly_consumption_gwh", "target_yearly": 10.0, "unit": "GWh", "category": "Energy"},
         {"kpi": "zoho_deals_new", "target_yearly": 500, "unit": "Leads", "category": "Sales"},
     ])
 
@@ -161,7 +187,7 @@ def load_daily_kpis() -> pd.DataFrame:
             numeric_cols = [c for c in df.columns if c != "date"]
             for col in numeric_cols:
                 df[col] = df[col].apply(_parse_number)
-            return df
+            return apply_source_fallback(df, config.KPI_SOURCE_FALLBACK)
         except Exception as e:
             logger.error(f"Fehler beim Laden der Daily KPIs: {e}")
 
@@ -182,7 +208,7 @@ def load_monthly_kpis() -> pd.DataFrame:
             numeric_cols = [c for c in df.columns if c != "month"]
             for col in numeric_cols:
                 df[col] = df[col].apply(_parse_number)
-            return df
+            return apply_source_fallback(df, config.MONTHLY_SOURCE_FALLBACK)
         except Exception as e:
             logger.error(f"Fehler beim Laden der Monthly KPIs: {e}")
 
@@ -200,6 +226,8 @@ def load_targets() -> pd.DataFrame:
             data = worksheet.get_all_records()
             df = pd.DataFrame(data)
             df["target_yearly"] = pd.to_numeric(df["target_yearly"], errors="coerce")
+            # Alte Notion-Schlüssel im Sheet auf die neuen Dashboard-Namen abbilden
+            df["kpi"] = df["kpi"].astype(str).str.strip().map(lambda k: config.KPI_ALIASES.get(k, k))
             return df
         except Exception as e:
             logger.error(f"Fehler beim Laden der Targets: {e}")

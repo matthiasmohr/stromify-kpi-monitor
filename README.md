@@ -1,13 +1,13 @@
 # ⚡ Stromify KPI Monitor
 
-Zentrales Dashboard zur Visualisierung der wichtigsten Unternehmens-KPIs. Aggregiert Daten aus Google Analytics, Notion und Zoho CRM in einem Streamlit-Frontend.
+Zentrales Dashboard zur Visualisierung der wichtigsten Unternehmens-KPIs. Aggregiert Daten aus Google Analytics, Zoho CRM und Auth0 in einem Streamlit-Frontend.
 
 ## Architektur
 
 ```
 Google Analytics ─┐
-Notion ───────────┤──▶ Python Cronjob ──▶ Google Sheet ──▶ Streamlit Dashboard
-Zoho CRM ─────────┘       (scheduled)        (Datenhaltung)     (Frontend)
+Zoho CRM ─────────┤──▶ Python Cronjob ──▶ Google Sheet ──▶ Streamlit Dashboard
+Auth0 ────────────┘       (scheduled)        (Datenhaltung)     (Frontend)
 ```
 
 ## KPIs
@@ -15,8 +15,30 @@ Zoho CRM ─────────┘       (scheduled)        (Datenhaltung) 
 | Quelle | Kennzahlen |
 |---|---|
 | Google Analytics | Website-Besucher, Sessions, Absprungrate |
-| Notion | Kunden Gesamt, Yearly Consumption (GWh) |
-| Zoho CRM | Neue Deals, Deals Gesamt, Deals gewonnen |
+| Zoho CRM – Deals | Lead-Pipeline Energie & Lizenzen (neu, aktiv, gewonnen, verloren, Warteschleife) |
+| Zoho CRM – Verträge | Aktive Verträge Energie, Yearly Consumption (GWh), Provision Energie (CLV), Lizenzumsatz (CLV) |
+| Auth0 | Monthly Active Users, letzte Logins externer Nutzer |
+
+### Vertrags-KPIs (Zoho Custom-Modul `Vertr_ge`)
+
+Seit September 2026 kommen Kunden-, Verbrauchs- und Erlös-KPIs aus dem Zoho-Modul **Verträge**
+(vorher Notion). Definitionen:
+
+| Sheet-Spalte | Definition |
+|---|---|
+| `zoho_contracts_active` | Anzahl Verträge mit Vertragsart **„Energie + Einsparvergütung“**, die aktiv sind: kein Lieferende **oder** heute < Lieferende. Verträge mit Lieferbeginn in der Zukunft zählen mit. |
+| `zoho_yearly_consumption_gwh` | Σ `JVP Strom` + `JVP Gas` aller Verträge „Energie + Einsparvergütung“, in GWh |
+| `zoho_provision_eur` | Σ `CLV Vertrag` aller Verträge „Energie + Einsparvergütung“ |
+| `zoho_license_revenue_eur` | Σ `CLV Vertrag` aller Verträge mit Vertragsart **„Lizenz“** |
+
+Die Summen sind – wie früher in Notion – nicht auf aktive Verträge eingeschränkt.
+Die alten Spalten `notion_*` und `manual_license_revenue` bleiben eingefroren im Sheet
+(Historie ab Feb. 2026); das Dashboard nutzt für alte Tage automatisch diese Werte als Fallback
+(`data_loader.apply_source_fallback`).
+
+Der Cron-Token hat nur den Scope `ZohoCRM.modules.READ` – COQL-Aggregation ist damit nicht
+möglich, die Berechnung passiert in Python (`cronjob/fetch_zoho.py::calc_contract_kpis`).
+Prüfen mit `python test_zoho_contracts.py`.
 
 ## Projektstruktur
 
@@ -35,8 +57,9 @@ stromify-kpi-monitor/
 │   ├── main.py               # Orchestrator
 │   ├── sheet_writer.py       # Google Sheets Schreiblogik
 │   ├── fetch_ga.py           # Google Analytics Data API v4
-│   ├── fetch_notion.py       # Notion API
-│   └── fetch_zoho.py         # Zoho CRM API
+│   ├── fetch_zoho.py         # Zoho CRM API (Deals + Verträge)
+│   └── fetch_auth0.py        # Auth0 Management API (MAU)
+├── test_zoho_contracts.py    # Verifikation der Vertrags-KPIs
 └── .env.example              # Vorlage für Umgebungsvariablen
 ```
 
@@ -61,9 +84,9 @@ cp .env.example .env
 
 Erstelle ein Google Sheet mit drei Blättern:
 
-- **`kpi_daily`** – Tagesaktuelle KPI-Werte (Spalten: `date`, `ga_visitors`, `ga_sessions`, `ga_bounce_rate`, `notion_customers_total`, `notion_yearly_consumption_gwh`, `zoho_deals_new`, `zoho_deals_total`, `zoho_deals_won`)
-- **`kpi_monthly`** – Monatliche Aggregation (Spalten: `month`, `ga_visitors_sum`, `ga_visitors_avg`, `notion_customers_end`, `notion_customers_new`, `notion_yearly_consumption_gwh`, `zoho_deals_sum`, `zoho_deals_won_sum`)
-- **`kpi_targets`** – Zielwerte für Soll/Ist-Vergleich (Spalten: `kpi`, `target_monthly`, `unit`, `category`)
+- **`kpi_daily`** – Tagesaktuelle KPI-Werte. Spalten siehe `config.DAILY_COLUMNS` (der Cronjob legt die Header selbst an), u. a. `zoho_contracts_active`, `zoho_yearly_consumption_gwh`, `zoho_provision_eur`, `zoho_license_revenue_eur`, `zoho_deals_*`, `auth0_mau`.
+- **`kpi_monthly`** – Monatliche Aggregation, Spalten siehe `config.MONTHLY_COLUMNS`.
+- **`kpi_targets`** – Jahresziele für Soll/Ist-Vergleich (Spalten: `kpi`, `target_yearly`, `unit`, `category`). Als `kpi` die Dashboard-Namen `contracts_active`, `yearly_consumption_gwh`, `provision_eur`, `license_revenue_eur`, `ga_visitors`, `zoho_deals_new` verwenden. Die alten Schlüssel `notion_customers_total` und `notion_yearly_consumption_gwh` werden per `config.KPI_ALIASES` weiterhin verstanden.
 
 Teile das Sheet mit der E-Mail des Google Service Accounts.
 
@@ -128,8 +151,6 @@ Setup im Railway-Dashboard:
 | `GOOGLE_SHEETS_ID` | ID des Google Sheets |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Service Account Key (Base64-encoded) |
 | `GA_PROPERTY_ID` | Google Analytics Property (z.B. `properties/123456789`) |
-| `NOTION_API_KEY` | Notion Integration API Key |
-| `NOTION_CUSTOMERS_DB_ID` | Notion Kunden-Datenbank ID |
 | `ZOHO_CLIENT_ID` | Zoho OAuth Client ID |
 | `ZOHO_CLIENT_SECRET` | Zoho OAuth Client Secret |
 | `ZOHO_REFRESH_TOKEN` | Zoho OAuth Refresh Token |
@@ -171,5 +192,5 @@ setzen – `start.sh` generiert daraus beim Start automatisch die `.streamlit/se
 
 - **Frontend:** Streamlit + Plotly
 - **Datenhaltung:** Google Sheets (via gspread)
-- **APIs:** Google Analytics Data API v4, Notion API, Zoho CRM API v5
+- **APIs:** Google Analytics Data API v4, Zoho CRM API v8 (Deals + Custom-Modul Verträge), Auth0 Management API
 - **Deployment:** Railway
